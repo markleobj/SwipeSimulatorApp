@@ -9,6 +9,7 @@ import android.graphics.PixelFormat;
 import android.os.Build;
 import android.os.Handler;
 import android.os.Looper;
+import android.content.DialogInterface;
 import android.text.Editable;
 import android.text.TextWatcher;
 import android.view.Gravity;
@@ -18,11 +19,15 @@ import android.view.View;
 import android.view.ViewGroup;
 import android.view.WindowManager;
 import android.view.inputmethod.InputMethodManager;
+import android.widget.ArrayAdapter;
 import android.widget.Button;
 import android.widget.EditText;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
+import android.widget.SeekBar;
 import android.widget.TextView;
+
+import androidx.appcompat.app.AlertDialog;
 
 import androidx.localbroadcastmanager.content.LocalBroadcastManager;
 
@@ -53,9 +58,15 @@ public class FloatingWindowManager {
     private ViewGroup rowDistance, rowIntervalSwipe, rowDuration, rowMidPause, rowMidPos, rowOffset;
     private EditText etDistance, etIntervalSwipe, etDuration, etMidPause, etMidPos, etOffset;
     // 点击模式
+    private ViewGroup rowIntervalClick;
     private EditText etIntervalClick;
+    private SeekBar sbIntervalClick;
     private TextView btnAddPoint;
     private LinearLayout pointsContainer;
+
+    // 方案管理
+    private ProfileManager profiles;
+    private TextView btnSaveProfile, btnProfiles;
 
     // 缓存 cfg
     private SwipeConfig cfg;
@@ -163,9 +174,17 @@ public class FloatingWindowManager {
             setRowLabel(rowOffset, "起点偏移", "%");
 
             // 点击模式
-            etIntervalClick  = rootView.findViewById(R.id.et_interval_click);
+            rowIntervalClick = rootView.findViewById(R.id.row_interval_click);
+            etIntervalClick  = rowIntervalClick.findViewById(R.id.row_value);
+            sbIntervalClick  = rootView.findViewById(R.id.sb_interval_click);
             btnAddPoint      = rootView.findViewById(R.id.btn_add_point);
             pointsContainer  = rootView.findViewById(R.id.points_container);
+            setRowLabel(rowIntervalClick, "循环间隔", "秒");
+
+            // 方案按钮
+            btnSaveProfile   = rootView.findViewById(R.id.btn_save_profile);
+            btnProfiles      = rootView.findViewById(R.id.btn_profiles);
+            profiles         = new ProfileManager(ctx);
 
             setupDrag();
             setupClicks();
@@ -284,6 +303,7 @@ public class FloatingWindowManager {
 
             // Click rows
             etIntervalClick.setText(String.valueOf(Math.max(1, Math.min(600, cfg.intervalSec))));
+            try { sbIntervalClick.setProgress(Math.max(1, Math.min(600, cfg.intervalSec))); } catch (Throwable ignored) {}
             renderPointsList();
         } finally { settingText = false; }
     }
@@ -503,7 +523,30 @@ public class FloatingWindowManager {
             @Override public void apply(int v) { cfg.intervalSec = Math.max(1, Math.min(600, v)); persistCfg(); syncBothInterval(); }
         });
         attachNumWatcher(etIntervalClick, new NumApply() {
-            @Override public void apply(int v) { cfg.intervalSec = Math.max(1, Math.min(600, v)); persistCfg(); syncBothInterval(); }
+            @Override public void apply(int v) {
+                int clamped = Math.max(1, Math.min(600, v));
+                cfg.intervalSec = clamped;
+                settingText = true;
+                try { if (sbIntervalClick != null) sbIntervalClick.setProgress(clamped); } catch (Throwable ignored) {}
+                finally { settingText = false; }
+                persistCfg();
+                syncBothInterval();
+            }
+        });
+        // 点击模式循环间隔 SeekBar 双向联动
+        sbIntervalClick.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
+            @Override public void onProgressChanged(SeekBar seekBar, int progress, boolean fromUser) {
+                int v = Math.max(1, Math.min(600, progress));
+                cfg.intervalSec = v;
+                if (!settingText) {
+                    settingText = true;
+                    try { etIntervalClick.setText(String.valueOf(v)); }
+                    finally { settingText = false; }
+                }
+                if (fromUser) { persistCfg(); syncBothInterval(); }
+            }
+            @Override public void onStartTrackingTouch(SeekBar seekBar) {}
+            @Override public void onStopTrackingTouch(SeekBar seekBar) {}
         });
 
         btnAddPoint.setOnClickListener(new View.OnClickListener() {
@@ -566,13 +609,15 @@ public class FloatingWindowManager {
     }
 
     private void syncBothInterval() {
-        // 滑动/点击用同一个 intervalSec，两个输入框保持一致
+        // 滑动/点击用同一个 intervalSec，两个输入框 + 点击 SeekBar 保持一致
         int v = Math.max(1, Math.min(600, cfg.intervalSec));
         settingText = true;
         try {
             etIntervalSwipe.setText(String.valueOf(v));
             etIntervalClick.setText(String.valueOf(v));
+            if (sbIntervalClick != null) sbIntervalClick.setProgress(v);
         } finally { settingText = false; }
+        try { refreshParamsText(); } catch (Throwable ignored) {}
     }
 
     // ============== 采点流程 ==============
@@ -625,7 +670,175 @@ public class FloatingWindowManager {
         } catch (Throwable ignored) {}
     }
 
+    // ============== 方案管理 UI（悬浮窗内精简版） ==============
+    private void showSaveProfileDialog() {
+        try {
+            if (profiles == null) profiles = new ProfileManager(ctx);
+            final EditText et = new EditText(ctx);
+            et.setInputType(android.text.InputType.TYPE_CLASS_TEXT);
+            et.setTextColor(0xFFE2E8F0);
+            et.setHintTextColor(0xFF718096);
+            et.setBackgroundResource(R.drawable.bg_input);
+            int pad = dp2(10);
+            et.setPadding(pad, pad, pad, pad);
+            et.setTextSize(14);
+            final String active = profiles.getActiveName();
+            if (!active.isEmpty()) {
+                et.setHint("当前方案：" + active + "（留空则覆盖当前）");
+            } else {
+                et.setHint("方案名，例如：看视频 / 签到 / 点广告");
+            }
+
+            // 包一层带 padding 的 LinearLayout，避免贴边
+            LinearLayout wrap = new LinearLayout(ctx);
+            wrap.setOrientation(LinearLayout.VERTICAL);
+            int outer = dp2(20);
+            wrap.setPadding(outer, dp2(14), outer, 0);
+            wrap.addView(et, new LinearLayout.LayoutParams(-1, -2));
+
+            AlertDialog.Builder ab = new AlertDialog.Builder(ctx, android.R.style.Theme_DeviceDefault_Dialog_NoActionBar);
+            ab.setTitle("💾 保存当前配置为方案");
+            ab.setView(wrap);
+            ab.setNegativeButton("取消", null);
+            ab.setPositiveButton("保存", new DialogInterface.OnClickListener() {
+                @Override public void onClick(DialogInterface dialog, int which) {
+                    try {
+                        String name = et.getText() == null ? "" : et.getText().toString().trim();
+                        // 没填：若有激活方案 → 直接覆盖激活方案
+                        if (name.isEmpty()) {
+                            if (active.isEmpty()) { toastShort("请输入方案名，或先激活一个方案再覆盖"); return; }
+                            name = active;
+                        }
+                        if (name.length() > 30) name = name.substring(0, 30);
+                        if (!active.equals(name) && profiles.exists(name)) {
+                            toastShort("方案「" + name + "」已存在，请到📂方案里覆盖");
+                            return;
+                        }
+                        persistCfg();
+                        profiles.save(name, cfg);
+                        profiles.setActive(name);
+                        toastShort("已保存方案：" + name);
+                    } catch (Throwable t) { toastShort("保存失败: " + safeMsg(t)); }
+                }
+            });
+            AlertDialog d = ab.create();
+            // 对话框也需要 TYPE_SYSTEM_ALERT / TYPE_APPLICATION_OVERLAY 才能从悬浮窗弹
+            try {
+                WindowManager.LayoutParams lp = d.getWindow() == null ? null : d.getWindow().getAttributes();
+                if (lp != null) {
+                    lp.type = (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O)
+                            ? WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
+                            : WindowManager.LayoutParams.TYPE_PHONE;
+                }
+            } catch (Throwable ignored) {}
+            try { d.show(); } catch (Throwable t) { toastShort("弹保存窗失败: " + safeMsg(t)); }
+        } catch (Throwable t) { toastShort("保存对话框异常: " + safeMsg(t)); }
+    }
+
+    private void showProfileListDialog() {
+        try {
+            if (profiles == null) profiles = new ProfileManager(ctx);
+            final List<ProfileManager.Profile> list = profiles.listAll();
+            final String active = profiles.getActiveName();
+            if (list.isEmpty()) {
+                toastShort("还没有任何方案 → 点 💾 保存第一个");
+                return;
+            }
+            final String[] names = new String[list.size()];
+            for (int i = 0; i < list.size(); i++) {
+                ProfileManager.Profile p = list.get(i);
+                names[i] = p.name + (active.equals(p.name) ? "  ✔当前" : "");
+            }
+            AlertDialog.Builder ab = new AlertDialog.Builder(ctx, android.R.style.Theme_DeviceDefault_Dialog_NoActionBar);
+            ab.setTitle("📂 我的方案（点击加载）");
+            ab.setAdapter(new ArrayAdapter<>(ctx, android.R.layout.simple_list_item_1, names), new DialogInterface.OnClickListener() {
+                @Override public void onClick(DialogInterface dialog, int which) {
+                    try {
+                        ProfileManager.Profile p = list.get(which);
+                        SwipeConfig loaded = profiles.loadByName(p.name);
+                        if (loaded == null) { toastShort("加载失败"); return; }
+                        cfg = loaded;
+                        if (cfg.clickPoints == null) cfg.clickPoints = new ArrayList<>();
+                        applyCfgToUi();
+                        persistCfg(); // 落地 + 通知主界面和无障碍
+                        toastShort("已加载方案：" + p.name);
+                    } catch (Throwable t) { toastShort("加载失败: " + safeMsg(t)); }
+                }
+            });
+            ab.setNeutralButton("管理（删除）", new DialogInterface.OnClickListener() {
+                @Override public void onClick(DialogInterface dialog, int which) {
+                    showProfileDeleteDialog(list, active);
+                }
+            });
+            ab.setPositiveButton("关闭", null);
+            AlertDialog d = ab.create();
+            try {
+                WindowManager.LayoutParams lp = d.getWindow() == null ? null : d.getWindow().getAttributes();
+                if (lp != null) {
+                    lp.type = (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O)
+                            ? WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
+                            : WindowManager.LayoutParams.TYPE_PHONE;
+                }
+            } catch (Throwable ignored) {}
+            try { d.show(); } catch (Throwable t) { toastShort("弹方案列表失败: " + safeMsg(t)); }
+        } catch (Throwable t) { toastShort("方案列表异常: " + safeMsg(t)); }
+    }
+
+    private void showProfileDeleteDialog(final List<ProfileManager.Profile> list, final String active) {
+        try {
+            final String[] plainNames = new String[list.size()];
+            for (int i = 0; i < list.size(); i++) plainNames[i] = list.get(i).name + (active.equals(list.get(i).name) ? "（当前）" : "");
+            AlertDialog.Builder ab = new AlertDialog.Builder(ctx, android.R.style.Theme_DeviceDefault_Dialog_NoActionBar);
+            ab.setTitle("删除方案");
+            ab.setItems(plainNames, new DialogInterface.OnClickListener() {
+                @Override public void onClick(DialogInterface dialog, int which) {
+                    final String pickName = list.get(which).name;
+                    AlertDialog.Builder confirm = new AlertDialog.Builder(ctx, android.R.style.Theme_DeviceDefault_Dialog_NoActionBar);
+                    confirm.setTitle("确认删除「" + pickName + "」？");
+                    confirm.setMessage("删除后不可恢复");
+                    confirm.setNegativeButton("取消", null);
+                    confirm.setPositiveButton("删除", new DialogInterface.OnClickListener() {
+                        @Override public void onClick(DialogInterface dialog, int which) {
+                            try {
+                                boolean ok = profiles.delete(pickName);
+                                toastShort(ok ? "已删除方案：" + pickName : "删除失败");
+                            } catch (Throwable t) { toastShort("删除异常: " + safeMsg(t)); }
+                        }
+                    });
+                    AlertDialog d2 = confirm.create();
+                    try {
+                        WindowManager.LayoutParams lp = d2.getWindow() == null ? null : d2.getWindow().getAttributes();
+                        if (lp != null) {
+                            lp.type = (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O)
+                                    ? WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
+                                    : WindowManager.LayoutParams.TYPE_PHONE;
+                        }
+                    } catch (Throwable ignored) {}
+                    try { d2.show(); } catch (Throwable ignored) {}
+                }
+            });
+            AlertDialog d = ab.create();
+            try {
+                WindowManager.LayoutParams lp = d.getWindow() == null ? null : d.getWindow().getAttributes();
+                if (lp != null) {
+                    lp.type = (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O)
+                            ? WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
+                            : WindowManager.LayoutParams.TYPE_PHONE;
+                }
+            } catch (Throwable ignored) {}
+            try { d.show(); } catch (Throwable ignored) {}
+        } catch (Throwable ignored) {}
+    }
+
     private void setupClicks() {
+        // ========= 方案管理：💾 保存 / 📂 我的方案 =========
+        btnSaveProfile.setOnClickListener(new View.OnClickListener() {
+            @Override public void onClick(View v) { showSaveProfileDialog(); }
+        });
+        btnProfiles.setOnClickListener(new View.OnClickListener() {
+            @Override public void onClick(View v) { showProfileListDialog(); }
+        });
+
         btnStart.setOnClickListener(new View.OnClickListener() {
             @Override public void onClick(View v) {
                 SwipeAccessibilityService svc = SwipeAccessibilityService.get();

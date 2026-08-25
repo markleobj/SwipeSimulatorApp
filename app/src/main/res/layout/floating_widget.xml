@@ -42,6 +42,38 @@
                 android:textSize="13sp"
                 android:textStyle="bold"/>
             <TextView
+                android:id="@+id/btn_profiles"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="📂"
+                android:textColor="@color/primary"
+                android:textSize="13sp"
+                android:textStyle="bold"
+                android:paddingStart="6dp"
+                android:paddingEnd="6dp"
+                android:paddingTop="2dp"
+                android:paddingBottom="2dp"
+                android:background="@drawable/bg_dir_normal"/>
+            <View
+                android:layout_width="4dp"
+                android:layout_height="1dp"/>
+            <TextView
+                android:id="@+id/btn_save_profile"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="💾"
+                android:textColor="@color/primary"
+                android:textSize="13sp"
+                android:textStyle="bold"
+                android:paddingStart="6dp"
+                android:paddingEnd="6dp"
+                android:paddingTop="2dp"
+                android:paddingBottom="2dp"
+                android:background="@drawable/bg_dir_normal"/>
+            <View
+                android:layout_width="4dp"
+                android:layout_height="1dp"/>
+            <TextView
                 android:id="@+id/btn_close"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
@@ -138,42 +170,33 @@
             android:orientation="vertical"
             android:visibility="gone">
 
-            <!-- 顶部：总间隔 + 加点 -->
+            <!-- 循环间隔：输入框 + 单位（_row_edit 通用行） -->
+            <include layout="@layout/_row_edit" android:id="@+id/row_interval_click"/>
+            <!-- 循环间隔：可左右滑动拉条（SeekBar），与上面输入框双向联动 -->
+            <SeekBar
+                android:id="@+id/sb_interval_click"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:max="600"
+                android:progress="30"
+                android:paddingStart="2dp"
+                android:paddingEnd="2dp"
+                android:layout_marginBottom="6dp"/>
+
+            <!-- 顶部：加点按钮行 -->
             <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:orientation="horizontal"
                 android:gravity="center_vertical"
-                android:layout_marginBottom="6dp">
+                android:layout_marginBottom="4dp">
                 <TextView
-                    android:layout_width="wrap_content"
+                    android:layout_width="0dp"
                     android:layout_height="wrap_content"
-                    android:text="循环间隔:"
-                    android:textColor="@color/text2"
-                    android:textSize="11sp"
-                    android:layout_marginEnd="4dp"/>
-                <EditText
-                    android:id="@+id/et_interval_click"
-                    android:layout_width="52dp"
-                    android:layout_height="26dp"
-                    android:inputType="numberDecimal"
-                    android:hint="30"
-                    android:textColor="@color/text1"
-                    android:textColorHint="@color/text3"
-                    android:background="@drawable/bg_input"
-                    android:paddingStart="4dp"
-                    android:paddingEnd="4dp"
-                    android:textSize="11sp"
-                    android:gravity="center"/>
-                <TextView
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="秒"
+                    android:layout_weight="1"
+                    android:text="A→延时→B→…→循环"
                     android:textColor="@color/text3"
-                    android:textSize="10sp"
-                    android:layout_marginStart="2dp"
-                    android:layout_marginEnd="6dp"/>
-                <View android:layout_width="0dp" android:layout_height="1dp" android:layout_weight="1"/>
+                    android:textSize="10sp"/>
                 <TextView
                     android:id="@+id/btn_add_point"
                     android:layout_width="wrap_content"
