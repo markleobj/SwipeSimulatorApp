@@ -570,14 +570,26 @@ public class FloatingWindowManager {
         });
         btnClose.setOnClickListener(new View.OnClickListener() {
             @Override public void onClick(View v) {
-                LocalBroadcastManager.getInstance(ctx).sendBroadcast(new Intent(FloatingService.ACTION_HIDE));
+                // 点 ✕ 只收起透明大面板，回到只显示圆形小球（不关闭悬浮窗服务）
+                if (panel != null) panel.setVisibility(View.GONE);
             }
         });
         handleView.setOnClickListener(new View.OnClickListener() {
             @Override public void onClick(View v) {
+                // 点击圆形小球 → 展开/收起透明大面板
                 if (panel != null) {
                     panel.setVisibility(panel.getVisibility() == View.VISIBLE ? View.GONE : View.VISIBLE);
                 }
+            }
+        });
+        handleView.setOnLongClickListener(new View.OnLongClickListener() {
+            @Override public boolean onLongClick(View v) {
+                // 长按圆形小球 2 秒 → 才真正关闭整个悬浮窗服务
+                try {
+                    toastShort("已关闭悬浮窗");
+                    LocalBroadcastManager.getInstance(ctx).sendBroadcast(new Intent(FloatingService.ACTION_HIDE));
+                } catch (Throwable ignored) {}
+                return true;
             }
         });
     }

@@ -16,7 +16,7 @@
         android:scaleType="centerInside"
         android:contentDescription="悬浮球"/>
 
-    <!-- 控制面板 ScrollView（因为内容可能长） -->
+    <!-- 控制面板（默认隐藏，点击圆形小球后才展开） -->
     <LinearLayout
         android:id="@+id/panel"
         android:layout_width="264dp"
@@ -25,7 +25,7 @@
         android:background="@drawable/bg_floating"
         android:padding="10dp"
         android:layout_marginTop="6dp"
-        android:visibility="visible">
+        android:visibility="gone">
 
         <LinearLayout
             android:layout_width="match_parent"
