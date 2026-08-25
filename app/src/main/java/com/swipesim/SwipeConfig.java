@@ -100,34 +100,44 @@ public class SwipeConfig {
     public static SwipeConfig load(Context ctx) {
         SharedPreferences sp = ctx.getSharedPreferences(PREF, Context.MODE_PRIVATE);
         SwipeConfig c = new SwipeConfig();
+        if (c.clickPoints == null) c.clickPoints = new ArrayList<>();
         c.clickPoints.clear();
         try {
             c.mode = Mode.valueOf(sp.getString("mode", Mode.SWIPE.name()));
         } catch (Exception e) { c.mode = Mode.SWIPE; }
         try { c.direction = Direction.valueOf(sp.getString("dir", Direction.DOWN.name())); }
-        catch (Exception ignored) {}
-        c.distancePct = sp.getInt("distancePct", 60);
-        c.durationMs = sp.getInt("swipeDur", 500);
-        c.midPauseMs = sp.getInt("midPause", 0);
-        c.midPausePosPct = sp.getInt("midPauseAt", 50);
-        c.startOffsetPct = sp.getInt("offset", 50);
+        catch (Exception ignored) { c.direction = Direction.DOWN; }
+        c.distancePct = Math.max(10, Math.min(90, sp.getInt("distancePct", 60)));
+        c.durationMs = Math.max(50, sp.getInt("swipeDur", 500));
+        c.midPauseMs = Math.max(0, sp.getInt("midPause", 0));
+        c.midPausePosPct = Math.max(0, Math.min(100, sp.getInt("midPauseAt", 50)));
+        c.startOffsetPct = Math.max(0, Math.min(100, sp.getInt("offset", 50)));
 
         int intervalMs = sp.getInt("interval", 30000);
         c.intervalSec = Math.max(1, Math.min(600, intervalMs / 1000));
 
         String pts = sp.getString("clickPoints", null);
         if (pts != null) {
-            c.clickPoints.addAll(ClickPoint.listFromJson(pts));
+            List<ClickPoint> parsed = ClickPoint.listFromJson(pts);
+            if (parsed != null) c.clickPoints.addAll(parsed);
         }
         if (c.clickPoints.isEmpty()) {
             c.clickPoints.add(new ClickPoint(50, 40, 10));
             c.clickPoints.add(new ClickPoint(50, 60, 20));
         }
+        // 最终兜底
+        if (c.mode == null) c.mode = Mode.SWIPE;
+        if (c.direction == null) c.direction = Direction.DOWN;
         return c;
     }
 
     public void save(Context ctx) {
+        if (mode == null) mode = Mode.SWIPE;
+        if (direction == null) direction = Direction.DOWN;
+        if (clickPoints == null) clickPoints = new ArrayList<>();
         intervalSec = Math.max(1, Math.min(600, intervalSec));
+        distancePct = Math.max(10, Math.min(90, distancePct));
+        durationMs = Math.max(50, durationMs);
         SharedPreferences.Editor ed = ctx.getSharedPreferences(PREF, Context.MODE_PRIVATE).edit();
         ed.putString("mode", mode.name());
         ed.putString("dir", direction.name());
@@ -144,49 +154,63 @@ public class SwipeConfig {
     // ====== 整个配置 <-> JSON（用于 Profile/方案 保存）======
     public String toJson() {
         try {
+            if (clickPoints == null) clickPoints = new ArrayList<>();
             JSONObject o = new JSONObject();
-            o.put("mode", mode.name());
-            o.put("dir", direction.name());
-            o.put("distancePct", distancePct);
-            o.put("durationMs", durationMs);
-            o.put("midPauseMs", midPauseMs);
-            o.put("midPausePosPct", midPausePosPct);
-            o.put("startOffsetPct", startOffsetPct);
+            o.put("mode", mode == null ? Mode.SWIPE.name() : mode.name());
+            o.put("dir", direction == null ? Direction.DOWN.name() : direction.name());
+            o.put("distancePct", Math.max(10, Math.min(90, distancePct)));
+            o.put("durationMs", Math.max(50, durationMs));
+            o.put("midPauseMs", Math.max(0, midPauseMs));
+            o.put("midPausePosPct", Math.max(0, Math.min(100, midPausePosPct)));
+            o.put("startOffsetPct", Math.max(0, Math.min(100, startOffsetPct)));
             o.put("intervalSec", Math.max(1, Math.min(600, intervalSec)));
-            o.put("clickPoints", new JSONArray(ClickPoint.listToJson(clickPoints)));
+            // clickPoints 直接存 JSON 字符串，避免 toJsonArray 再 fromJsonArray 多次解析
+            o.put("clickPointsRaw", ClickPoint.listToJson(clickPoints));
             return o.toString();
-        } catch (Throwable t) { return "{}"; }
+        } catch (Throwable t) {
+            android.util.Log.e("SwipeConfig", "toJson err", t);
+            return "{}";
+        }
     }
 
     public static SwipeConfig fromJson(String json) {
         SwipeConfig c = new SwipeConfig();
+        if (c.clickPoints == null) c.clickPoints = new ArrayList<>();
         c.clickPoints.clear();
         if (json == null || json.isEmpty()) return c;
         try {
             JSONObject o = new JSONObject(json);
-            try { c.mode = Mode.valueOf(o.optString("mode", Mode.SWIPE.name())); } catch (Exception ignored) {}
-            try { c.direction = Direction.valueOf(o.optString("dir", Direction.DOWN.name())); } catch (Exception ignored) {}
-            c.distancePct = o.optInt("distancePct", 60);
-            c.durationMs = o.optInt("durationMs", 500);
-            c.midPauseMs = o.optInt("midPauseMs", 0);
-            c.midPausePosPct = o.optInt("midPausePosPct", 50);
-            c.startOffsetPct = o.optInt("startOffsetPct", 50);
+            try { c.mode = Mode.valueOf(o.optString("mode", Mode.SWIPE.name())); } catch (Exception ignored) { c.mode = Mode.SWIPE; }
+            try { c.direction = Direction.valueOf(o.optString("dir", Direction.DOWN.name())); } catch (Exception ignored) { c.direction = Direction.DOWN; }
+            c.distancePct = Math.max(10, Math.min(90, o.optInt("distancePct", 60)));
+            c.durationMs = Math.max(50, o.optInt("durationMs", 500));
+            c.midPauseMs = Math.max(0, o.optInt("midPauseMs", 0));
+            c.midPausePosPct = Math.max(0, Math.min(100, o.optInt("midPausePosPct", 50)));
+            c.startOffsetPct = Math.max(0, Math.min(100, o.optInt("startOffsetPct", 50)));
             int iSec = o.optInt("intervalSec", -1);
             if (iSec >= 1) c.intervalSec = Math.min(600, iSec);
             else c.intervalSec = Math.max(1, Math.min(600, o.optInt("intervalMs", 30000) / 1000));
-            JSONArray arr = o.optJSONArray("clickPoints");
-            if (arr == null) {
-                String raw = o.optString("clickPointsRaw", null);
-                if (raw != null) c.clickPoints.addAll(ClickPoint.listFromJson(raw));
-            } else {
-                // clickPoints 字段里已经是 JSONArray -> 转成字符串再用现成方法
-                c.clickPoints.addAll(ClickPoint.listFromJson(arr.toString()));
+
+            // 优先用 clickPointsRaw（新格式，存 JSON 字符串）；兼容旧的 JSONArray 格式
+            String raw = o.optString("clickPointsRaw", null);
+            if (raw == null || raw.isEmpty()) {
+                JSONArray arr = o.optJSONArray("clickPoints");
+                if (arr != null) raw = arr.toString();
             }
+            List<ClickPoint> parsed = ClickPoint.listFromJson(raw);
+            if (parsed != null) c.clickPoints.addAll(parsed);
+
             if (c.clickPoints.isEmpty()) {
                 c.clickPoints.add(new ClickPoint(30, 50, 10));
                 c.clickPoints.add(new ClickPoint(70, 50, 10));
             }
-        } catch (Throwable ignored) {}
+        } catch (Throwable t) {
+            android.util.Log.e("SwipeConfig", "fromJson err", t);
+        }
+        // 最终兜底
+        if (c.mode == null) c.mode = Mode.SWIPE;
+        if (c.direction == null) c.direction = Direction.DOWN;
+        if (c.clickPoints == null) c.clickPoints = new ArrayList<>();
         return c;
     }
 }

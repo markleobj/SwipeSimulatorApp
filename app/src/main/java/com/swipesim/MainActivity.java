@@ -21,6 +21,7 @@ import android.widget.ArrayAdapter;
 import android.widget.Button;
 import android.widget.EditText;
 import android.widget.LinearLayout;
+import android.widget.ScrollView;
 import android.widget.SeekBar;
 import android.widget.TextView;
 import android.widget.Toast;
@@ -295,13 +296,13 @@ public class MainActivity extends AppCompatActivity {
             Intent i = new Intent(MainActivity.this, FloatingService.class);
             i.setAction(FloatingService.ACTION_SHOW);
             putCfgIntent(i);
-            startService(i);
+            safeStartFgService(i);
             askOverlayIfNeeded();
         }, "显示悬浮窗"));
         btnHideFloat.setOnClickListener(wrap(v -> {
             Intent i = new Intent(MainActivity.this, FloatingService.class);
             i.setAction(FloatingService.ACTION_HIDE);
-            startService(i);
+            safeStartFgService(i);
         }, "隐藏悬浮窗"));
         btnStart.setOnClickListener(wrap(v -> {
             if (!isAccessibilityEnabled()) {
@@ -319,7 +320,7 @@ public class MainActivity extends AppCompatActivity {
             Intent fi = new Intent(MainActivity.this, FloatingService.class);
             fi.setAction(FloatingService.ACTION_SHOW);
             putCfgIntent(fi);
-            startService(fi);
+            safeStartFgService(fi);
             askOverlayIfNeeded();
             LocalBroadcastManager.getInstance(MainActivity.this)
                     .sendBroadcast(new Intent(SwipeAccessibilityService.ACTION_START));
@@ -340,6 +341,9 @@ public class MainActivity extends AppCompatActivity {
             } catch (Throwable ignored) {}
         }
 
+        // clickPoints 兜底：防止 load/profile 后被置 null
+        if (cfg.clickPoints == null) cfg.clickPoints = new ArrayList<>();
+
         switchMode(cfg.mode);
         rebuildPointList();
 
@@ -348,6 +352,52 @@ public class MainActivity extends AppCompatActivity {
         f.addAction(FloatingService.ACTION_FLOATING_UPDATE);
         try {
             ContextCompat.registerReceiver(this, statusReceiver, f, ContextCompat.RECEIVER_NOT_EXPORTED);
+        } catch (Throwable ignored) {}
+
+        // ===== 检测上次崩溃并弹窗展示 =====
+        try {
+            String lastCrash = App.peekLastCrash(this);
+            if (lastCrash != null && !lastCrash.isEmpty()) {
+                showLastCrashDialog(lastCrash);
+            }
+        } catch (Throwable ignored) {}
+    }
+
+    // ===== 上次崩溃弹窗 =====
+    private void showLastCrashDialog(final String crashText) {
+        try {
+            final ScrollView sv = new ScrollView(this);
+            final TextView tv = new TextView(this);
+            int pad = dp(16);
+            tv.setPadding(pad, pad, pad, pad);
+            tv.setTextSize(11);
+            tv.setTextColor(0xFFE2E8F0);
+            tv.setText(crashText);
+            sv.addView(tv, new ScrollView.LayoutParams(-1, -2));
+
+            AlertDialog.Builder ab = new AlertDialog.Builder(this)
+                    .setTitle("⚠ 检测到上次发生崩溃")
+                    .setView(sv)
+                    .setNegativeButton("关闭", new DialogInterface.OnClickListener() {
+                        @Override public void onClick(DialogInterface d, int w) {
+                            try { App.clearLastCrash(MainActivity.this); } catch (Throwable ignored) {}
+                        }
+                    })
+                    .setPositiveButton("复制并清除", new DialogInterface.OnClickListener() {
+                        @Override public void onClick(DialogInterface d, int w) {
+                            try {
+                                android.content.ClipboardManager cm = (android.content.ClipboardManager)
+                                        getSystemService(CLIPBOARD_SERVICE);
+                                if (cm != null) {
+                                    cm.setPrimaryClip(android.content.ClipData.newPlainText("crash", crashText));
+                                    toastShort("崩溃日志已复制到剪贴板");
+                                }
+                            } catch (Throwable ignored) {}
+                            try { App.clearLastCrash(MainActivity.this); } catch (Throwable ignored) {}
+                        }
+                    });
+            ab.setCancelable(false);
+            ab.show();
         } catch (Throwable ignored) {}
     }
 
@@ -557,20 +607,31 @@ public class MainActivity extends AppCompatActivity {
     // ============================================================
     private void switchMode(Mode m) {
         cfg.mode = m;
+        if (cfg.clickPoints == null) cfg.clickPoints = new ArrayList<>();
         boolean isSwipe = (m == Mode.SWIPE);
-        swipeParams.setVisibility(isSwipe ? View.VISIBLE : View.GONE);
-        clickParams.setVisibility(isSwipe ? View.GONE : View.VISIBLE);
+        if (swipeParams != null)
+            swipeParams.setVisibility(isSwipe ? View.VISIBLE : View.GONE);
+        if (clickParams != null)
+            clickParams.setVisibility(isSwipe ? View.GONE : View.VISIBLE);
 
         if (isSwipe) {
-            tabSwipe.setBackgroundResource(R.drawable.bg_dir_selected);
-            tabSwipe.setTextColor(0xFF38BDF8);
-            tabClick.setBackgroundResource(R.drawable.bg_dir_normal);
-            tabClick.setTextColor(0xFFE2E8F0);
+            if (tabSwipe != null) {
+                tabSwipe.setBackgroundResource(R.drawable.bg_dir_selected);
+                tabSwipe.setTextColor(0xFF38BDF8);
+            }
+            if (tabClick != null) {
+                tabClick.setBackgroundResource(R.drawable.bg_dir_normal);
+                tabClick.setTextColor(0xFFE2E8F0);
+            }
         } else {
-            tabClick.setBackgroundResource(R.drawable.bg_dir_selected);
-            tabClick.setTextColor(0xFF38BDF8);
-            tabSwipe.setBackgroundResource(R.drawable.bg_dir_normal);
-            tabSwipe.setTextColor(0xFFE2E8F0);
+            if (tabClick != null) {
+                tabClick.setBackgroundResource(R.drawable.bg_dir_selected);
+                tabClick.setTextColor(0xFF38BDF8);
+            }
+            if (tabSwipe != null) {
+                tabSwipe.setBackgroundResource(R.drawable.bg_dir_normal);
+                tabSwipe.setTextColor(0xFFE2E8F0);
+            }
             if (cfg.clickPoints.isEmpty()) {
                 addClickPoint(30, 50, 10);
                 addClickPoint(70, 50, 10);
@@ -585,8 +646,20 @@ public class MainActivity extends AppCompatActivity {
             Intent fi = new Intent(this, FloatingService.class);
             fi.setAction(FloatingService.ACTION_REFRESH);
             putCfgIntent(fi);
-            startService(fi);
+            safeStartFgService(fi);
         } catch (Throwable ignored) {}
+    }
+
+    private void safeStartFgService(Intent i) {
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                ContextCompat.startForegroundService(this, i);
+            } else {
+                startService(i);
+            }
+        } catch (Throwable t) {
+            toastShort("启动服务失败：" + safeMsg(t));
+        }
     }
 
     private void putCfgIntent(Intent i) {
@@ -675,7 +748,7 @@ public class MainActivity extends AppCompatActivity {
             saveCfg();
             Intent fi = new Intent(MainActivity.this, FloatingService.class);
             fi.setAction(FloatingService.ACTION_HIDE_TEMP);
-            startService(fi);
+            safeStartFgService(fi);
             CaptureOverlayManager.show(MainActivity.this,
                     h.index,
                     pointLetter(h.index),
@@ -685,14 +758,18 @@ public class MainActivity extends AppCompatActivity {
                                 Intent ri = new Intent(MainActivity.this, FloatingService.class);
                                 ri.setAction(FloatingService.ACTION_RESTORE_TEMP);
                                 putCfgIntent(ri);
-                                startService(ri);
+                                safeStartFgService(ri);
                             } catch (Throwable ignored) {}
-                            ClickPoint p = cfg.clickPoints.get(h.index);
-                            p.xPct = xPct; p.yPct = yPct;
-                            h.xSb.setProgress(xPct);
-                            h.ySb.setProgress(yPct);
-                            saveCfg();
-                            toastShort(pointLetter(h.index) + " 点已更新 X=" + xPct + "% Y=" + yPct + "%");
+                            try {
+                                if (h.index >= 0 && h.index < cfg.clickPoints.size()) {
+                                    ClickPoint p = cfg.clickPoints.get(h.index);
+                                    p.xPct = xPct; p.yPct = yPct;
+                                    h.xSb.setProgress(xPct);
+                                    h.ySb.setProgress(yPct);
+                                    saveCfg();
+                                    toastShort(pointLetter(h.index) + " 点已更新 X=" + xPct + "% Y=" + yPct + "%");
+                                }
+                            } catch (Throwable t) { toastShort("更新点失败：" + safeMsg(t)); }
                         }
                     });
         }, "采点"));

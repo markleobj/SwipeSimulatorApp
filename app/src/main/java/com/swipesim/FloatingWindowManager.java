@@ -79,27 +79,43 @@ public class FloatingWindowManager {
     @SuppressLint("InflateParams")
     public void show() {
         if (shown) return;
-        rootView = LayoutInflater.from(ctx).inflate(R.layout.floating_widget, null);
-        handleView = rootView.findViewById(R.id.handle);
-        btnStart   = rootView.findViewById(R.id.btn_start);
-        tvStatus   = rootView.findViewById(R.id.tv_status);
-        tvCount    = rootView.findViewById(R.id.tv_count);
-        tvParams   = rootView.findViewById(R.id.tv_params);
-        panel      = rootView.findViewById(R.id.panel);
-        btnClose   = rootView.findViewById(R.id.btn_close);
+        try {
+            rootView = LayoutInflater.from(ctx).inflate(R.layout.floating_widget, null);
+            handleView = rootView.findViewById(R.id.handle);
+            btnStart   = rootView.findViewById(R.id.btn_start);
+            tvStatus   = rootView.findViewById(R.id.tv_status);
+            tvCount    = rootView.findViewById(R.id.tv_count);
+            tvParams   = rootView.findViewById(R.id.tv_params);
+            panel      = rootView.findViewById(R.id.panel);
+            btnClose   = rootView.findViewById(R.id.btn_close);
 
-        setupDrag();
-        setupClicks();
+            setupDrag();
+            setupClicks();
+        } catch (Throwable t) {
+            toastShort("悬浮窗初始化失败：" + safeMsg(t));
+            rootView = null;
+            shown = false;
+            return;
+        }
 
-        wm.addView(rootView, params);
-        shown = true;
-        tempHidden = false;
+        try {
+            wm.addView(rootView, params);
+            shown = true;
+            tempHidden = false;
+        } catch (Throwable t) {
+            toastShort("打开悬浮窗失败（请检查悬浮窗权限，含\"后台显示/显示在其他应用上层\"等子项）：" + safeMsg(t));
+            rootView = null;
+            shown = false;
+            return;
+        }
 
-        IntentFilter f = new IntentFilter(SwipeAccessibilityService.ACTION_STATUS_ANS);
-        LocalBroadcastManager.getInstance(ctx).registerReceiver(receiver, f);
-        requestStatus();
-        refreshParamsText();
-        updateStatus(false, 0, "idle");
+        try {
+            IntentFilter f = new IntentFilter(SwipeAccessibilityService.ACTION_STATUS_ANS);
+            LocalBroadcastManager.getInstance(ctx).registerReceiver(receiver, f);
+        } catch (Throwable ignored) {}
+        try { requestStatus(); } catch (Throwable ignored) {}
+        try { refreshParamsText(); } catch (Throwable ignored) {}
+        try { updateStatus(false, 0, "idle"); } catch (Throwable ignored) {}
     }
 
     public void remove() {
@@ -245,27 +261,43 @@ public class FloatingWindowManager {
     }
 
     private void updateStatus(boolean running, int count, String state) {
-        if (btnStart == null) return;
-        btnStart.setSelected(running);
-        if (running) {
-            btnStart.setText("■ 停止");
-            btnStart.setBackgroundResource(R.drawable.bg_btn_stop);
-        } else {
-            updateBtnStart();
-            btnStart.setBackgroundResource(R.drawable.bg_btn_primary);
-        }
-        tvCount.setText("次数: " + count);
-        String txt;
-        String s = state == null ? "idle" : state;
-        switch (s) {
-            case "swiping":          txt = "滑动中…"; break;
-            case "pausing_mid":      txt = "中途停顿…"; break;
-            case "clicking":         txt = "点击中…"; break;
-            case "waiting_point":    txt = "等待下一个点…"; break;
-            case "waiting_cycle":    txt = "等待下一轮…"; break;
-            case "waiting_next":     txt = (mode == Mode.CLICK) ? "等待下一轮…" : "等待下一次…"; break;
-            default:                 txt = running ? "运行中" : "就绪";
-        }
-        tvStatus.setText(txt);
+        try {
+            if (btnStart == null) return;
+            btnStart.setSelected(running);
+            if (running) {
+                btnStart.setText("■ 停止");
+                btnStart.setBackgroundResource(R.drawable.bg_btn_stop);
+            } else {
+                updateBtnStart();
+                btnStart.setBackgroundResource(R.drawable.bg_btn_primary);
+            }
+            if (tvCount != null) tvCount.setText("次数: " + count);
+            String txt;
+            String s = state == null ? "idle" : state;
+            switch (s) {
+                case "swiping":          txt = "滑动中…"; break;
+                case "pausing_mid":      txt = "中途停顿…"; break;
+                case "clicking":         txt = "点击中…"; break;
+                case "waiting_point":    txt = "等待下一个点…"; break;
+                case "waiting_cycle":    txt = "等待下一轮…"; break;
+                case "waiting_next":     txt = (mode == Mode.CLICK) ? "等待下一轮…" : "等待下一次…"; break;
+                default:                 txt = running ? "运行中" : "就绪";
+            }
+            if (tvStatus != null) tvStatus.setText(txt);
+        } catch (Throwable ignored) {}
+    }
+
+    private void toastShort(final String msg) {
+        if (msg == null) return;
+        try { android.widget.Toast.makeText(ctx, msg, android.widget.Toast.LENGTH_SHORT).show(); }
+        catch (Throwable ignored) {}
+    }
+    private static String safeMsg(Throwable t) {
+        try {
+            String msg = t == null ? "未知错误" : t.getMessage();
+            if (msg == null || msg.isEmpty()) msg = t == null ? "未知错误" : t.getClass().getSimpleName();
+            if (msg.length() > 100) msg = msg.substring(0, 100) + "…";
+            return msg;
+        } catch (Throwable ignore) { return "异常"; }
     }
 }

@@ -158,6 +158,15 @@ public class SwipeAccessibilityService extends AccessibilityService {
         try {
             if (running) return;
             if (cfg == null) cfg = SwipeConfig.load(this);
+            if (cfg == null) cfg = new SwipeConfig();
+            if (cfg.clickPoints == null) cfg.clickPoints = new java.util.ArrayList<>();
+            if (cfg.mode == null) cfg.mode = SwipeConfig.Mode.SWIPE;
+            if (cfg.direction == null) cfg.direction = SwipeConfig.Direction.DOWN;
+
+            if (cfg.mode == SwipeConfig.Mode.CLICK && cfg.clickPoints.isEmpty()) {
+                toastShort("请先添加至少一个点击点");
+                return;
+            }
             running = true;
             cancelled = false;
             cycleCount = 0;
@@ -243,6 +252,10 @@ public class SwipeAccessibilityService extends AccessibilityService {
     // ---------- 滑动模式 ----------
 
     private void performOneSwipe(final Runnable cb) {
+        if (cfg == null) {
+            try { if (cb != null) cb.run(); } catch (Throwable t) { failSafe(t, "cb 异常"); }
+            return;
+        }
         DisplayMetrics dm = getScreenMetrics();
         final int W = dm.widthPixels, H = dm.heightPixels;
 
@@ -358,14 +371,22 @@ public class SwipeAccessibilityService extends AccessibilityService {
 
     private void performClickCycle(final int idx, final Runnable cb) {
         if (cancelled) return;
-        final List<SwipeConfig.ClickPoint> points = cfg.clickPoints;
-        if (points == null || points.isEmpty()) {
-            logWarning("点击点为空，跳过该轮");
-            try { cb.run(); } catch (Throwable t) { failSafe(t, "cb 异常"); }
+        if (cfg == null) {
+            try { if (cb != null) cb.run(); } catch (Throwable t) { failSafe(t, "cb 异常"); }
             return;
         }
-        if (idx >= points.size()) {
-            try { cb.run(); } catch (Throwable t) { failSafe(t, "cb 异常"); }
+        // 快照一份，防止 UI 线程改动 list 导致并发/越界
+        List<SwipeConfig.ClickPoint> raw = cfg.clickPoints;
+        if (raw == null) raw = new java.util.ArrayList<>();
+        final List<SwipeConfig.ClickPoint> points = new java.util.ArrayList<>(raw);
+        if (points.isEmpty()) {
+            logWarning("点击点为空，跳过该轮");
+            try { if (cb != null) cb.run(); } catch (Throwable t) { failSafe(t, "cb 异常"); }
+            return;
+        }
+        if (idx < 0 || idx >= points.size()) {
+            // 越界：认为本轮完成
+            try { if (cb != null) cb.run(); } catch (Throwable t) { failSafe(t, "cb 异常"); }
             return;
         }
         final SwipeConfig.ClickPoint pt = points.get(idx);
