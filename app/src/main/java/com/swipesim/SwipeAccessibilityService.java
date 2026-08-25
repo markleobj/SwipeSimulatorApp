@@ -167,15 +167,17 @@ public class SwipeAccessibilityService extends AccessibilityService {
                 break;
         }
 
-        float ratio = cfg.midPauseAtPct / 100f;
-        final float mx = sx + (ex - sx) * ratio;
-        final float my = sy + (ey - sy) * ratio;
+        // Final copies for use inside inner classes (javac effectively-final check)
+        final float fsx = sx, fsy = sy, fex = ex, fey = ey;
+        final float ratio = cfg.midPauseAtPct / 100f;
+        final float mx = fsx + (fex - fsx) * ratio;
+        final float my = fsy + (fey - fsy) * ratio;
 
         final int firstDur  = (int)(cfg.swipeDurationMs * ratio);
-        final int secondDur = cfg.swipeDurationMs - firstDur;
+        final int secondDur = Math.max(40, cfg.swipeDurationMs - firstDur);
 
         setState("swiping");
-        dispatchSwipe(sx, sy, mx, my, Math.max(40, firstDur), new Runnable() {
+        dispatchSwipe(fsx, fsy, mx, my, Math.max(40, firstDur), new Runnable() {
             @Override public void run() {
                 if (cancelled) return;
                 if (cfg.midPauseMs > 0) {
@@ -185,11 +187,11 @@ public class SwipeAccessibilityService extends AccessibilityService {
                         @Override public void run() {
                             if (cancelled) return;
                             setState("swiping");
-                            dispatchSwipe(mx, my, ex, ey, Math.max(40, secondDur), cb);
+                            dispatchSwipe(mx, my, fex, fey, secondDur, cb);
                         }
                     }, cfg.midPauseMs);
                 } else {
-                    dispatchSwipe(mx, my, ex, ey, Math.max(40, secondDur), cb);
+                    dispatchSwipe(mx, my, fex, fey, secondDur, cb);
                 }
             }
         });

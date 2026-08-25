@@ -1,0 +1,28 @@
+# Gradle
+.gradle/
+build/
+!gradle/wrapper/gradle-wrapper.jar
+
+# Android
+/app/build/
+/local.properties
+/*.iml
+/app/*.iml
+/captures/
+.externalNativeBuild/
+.cxx/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+
+# APK / bundles
+*.apk
+*.aab
+*.ap_
+*.idsig
+
+# Misc
+.DS_Store
+Thumbs.db
