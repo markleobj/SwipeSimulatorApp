@@ -7,6 +7,8 @@ import android.content.Intent;
 import android.content.IntentFilter;
 import android.graphics.PixelFormat;
 import android.os.Build;
+import android.os.Handler;
+import android.os.Looper;
 import android.text.Editable;
 import android.text.TextWatcher;
 import android.view.Gravity;
@@ -66,6 +68,18 @@ public class FloatingWindowManager {
 
     private boolean tempHidden = false;
 
+    // 自定义长按检测（避免和拖动冲突）
+    private static final long LONG_PRESS_DELAY_MS = 1500L; // 1.5秒，比系统默认长，减少误触
+    private final Handler longPressHandler = new Handler(Looper.getMainLooper());
+    private final Runnable longPressRunnable = new Runnable() {
+        @Override public void run() {
+            try {
+                toastShort("已关闭悬浮窗");
+                LocalBroadcastManager.getInstance(ctx).sendBroadcast(new Intent(FloatingService.ACTION_HIDE));
+            } catch (Throwable ignored) {}
+        }
+    };
+
     private final BroadcastReceiver receiver = new BroadcastReceiver() {
         @Override public void onReceive(Context context, Intent intent) {
             try {
@@ -93,8 +107,9 @@ public class FloatingWindowManager {
                         | WindowManager.LayoutParams.FLAG_HARDWARE_ACCELERATED,
                 PixelFormat.TRANSLUCENT);
         params.gravity = Gravity.TOP | Gravity.START;
-        params.x = 20;
-        params.y = 400;
+        // 先默认 0,0；show() 里 addView 后再按屏幕实际尺寸移动到正中央
+        params.x = 0;
+        params.y = 0;
     }
 
     @SuppressLint("InflateParams")
@@ -163,6 +178,30 @@ public class FloatingWindowManager {
             shown = false;
             return;
         }
+
+        // 把悬浮窗（初始只有圆形小球）移动到屏幕正中央
+        try {
+            rootView.post(new Runnable() {
+                @Override public void run() {
+                    try {
+                        int w = rootView.getWidth();
+                        int h = rootView.getHeight();
+                        if (w <= 0 || h <= 0) {
+                            rootView.measure(View.MeasureSpec.UNSPECIFIED, View.MeasureSpec.UNSPECIFIED);
+                            w = rootView.getMeasuredWidth();
+                            h = rootView.getMeasuredHeight();
+                        }
+                        android.util.DisplayMetrics dm = ctx.getResources().getDisplayMetrics();
+                        // gravity=TOP|START 下，params.x / params.y 是左上角相对屏幕的偏移
+                        // 中心定位：(屏幕宽 - 悬浮窗宽) / 2 ，(屏幕高 - 悬浮窗高) / 2
+                        params.x = Math.max(0, (dm.widthPixels - w) / 2);
+                        // 垂直方向稍微偏上一点（40%），避免展开面板时被底部导航/手势条挡住
+                        params.y = Math.max(0, (int) (dm.heightPixels * 0.4) - h / 2);
+                        safeUpdate();
+                    } catch (Throwable ignored) {}
+                }
+            });
+        } catch (Throwable ignored) {}
 
         try {
             IntentFilter f = new IntentFilter();
@@ -604,16 +643,7 @@ public class FloatingWindowManager {
                 }
             }
         });
-        handleView.setOnLongClickListener(new View.OnLongClickListener() {
-            @Override public boolean onLongClick(View v) {
-                // 长按圆形小球 2 秒 → 才真正关闭整个悬浮窗服务
-                try {
-                    toastShort("已关闭悬浮窗");
-                    LocalBroadcastManager.getInstance(ctx).sendBroadcast(new Intent(FloatingService.ACTION_HIDE));
-                } catch (Throwable ignored) {}
-                return true;
-            }
-        });
+        // （删除系统 OnLongClickListener，改由 setupDrag 里的 Handler+Runnable 检测长按，避免与拖动冲突）
     }
 
     private void setupDrag() {
@@ -628,12 +658,18 @@ public class FloatingWindowManager {
                         downRawY = (int) e.getRawY();
                         startX = params.x;
                         startY = params.y;
-                        return false;
+                        // 1) 先取消任何已排期的长按（防止重复）
+                        try { longPressHandler.removeCallbacks(longPressRunnable); } catch (Throwable ignored) {}
+                        // 2) 排期新的长按检测（1.5秒后执行关闭）
+                        try { longPressHandler.postDelayed(longPressRunnable, LONG_PRESS_DELAY_MS); } catch (Throwable ignored) {}
+                        return false; // 返回false，让 OnClickListener 还能收到点击事件（展开/收面板）
                     case MotionEvent.ACTION_MOVE:
                         int dx = (int) e.getRawX() - downRawX;
                         int dy = (int) e.getRawY() - downRawY;
                         if (!dragging && (Math.abs(dx) > 8 || Math.abs(dy) > 8)) {
                             dragging = true;
+                            // 一旦判断为拖动 → 立刻取消长按（解决向右拖误触关闭的问题）
+                            try { longPressHandler.removeCallbacks(longPressRunnable); } catch (Throwable ignored) {}
                         }
                         if (dragging) {
                             params.x = Math.max(0, startX + dx);
@@ -644,6 +680,8 @@ public class FloatingWindowManager {
                         return false;
                     case MotionEvent.ACTION_UP:
                     case MotionEvent.ACTION_CANCEL:
+                        // 抬手/取消 → 取消长按（避免松手后又触发）
+                        try { longPressHandler.removeCallbacks(longPressRunnable); } catch (Throwable ignored) {}
                         return dragging;
                 }
                 return false;
