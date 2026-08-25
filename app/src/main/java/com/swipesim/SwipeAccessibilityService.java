@@ -26,6 +26,8 @@ public class SwipeAccessibilityService extends AccessibilityService {
     public static final String ACTION_SYNC       = "com.swipesim.SYNC";
     public static final String ACTION_STATUS_REQ = "com.swipesim.STATUS_REQ";
     public static final String ACTION_STATUS_ANS = "com.swipesim.STATUS_ANS";
+    // 无障碍服务连接状态变化（MainActivity 用它刷新 UI 上的 ✓/✗）
+    public static final String ACTION_ACC_STATE_CHANGED = "com.swipesim.ACC_STATE_CHANGED";
 
     public static final String EXTRA_RUNNING = "running";
     public static final String EXTRA_COUNT   = "count";
@@ -87,16 +89,28 @@ public class SwipeAccessibilityService extends AccessibilityService {
         try { LocalBroadcastManager.getInstance(this).unregisterReceiver(receiver); } catch (Throwable ignored) {}
         cancelled = true;
         running = false;
+        try { sendAccStateChanged(); } catch (Throwable ignored) {}
         super.onDestroy();
     }
 
     @Override public void onAccessibilityEvent(AccessibilityEvent e) { }
-    @Override public void onInterrupt() { }
+    @Override public void onInterrupt() {
+        // 部分 ROM（尤其 MIUI/ColorOS）停止服务时只走 onInterrupt，不走 onDestroy
+        sInstance = null;
+        try { sendAccStateChanged(); } catch (Throwable ignored) {}
+    }
 
     @Override protected void onServiceConnected() {
         super.onServiceConnected();
         sInstance = this;
+        try { sendAccStateChanged(); } catch (Throwable ignored) {}
         try { broadcastStatus(); } catch (Throwable ignored) {}
+    }
+
+    private void sendAccStateChanged() {
+        Intent i = new Intent(ACTION_ACC_STATE_CHANGED);
+        i.putExtra("connected", (sInstance != null));
+        LocalBroadcastManager.getInstance(this).sendBroadcast(i);
     }
 
     // ------------------------------------------------------------

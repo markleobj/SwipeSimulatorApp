@@ -12,6 +12,8 @@ import android.content.pm.PackageManager;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
+import android.os.Handler;
+import android.os.Looper;
 import android.provider.Settings;
 import android.text.InputType;
 import android.view.LayoutInflater;
@@ -66,6 +68,7 @@ public class MainActivity extends AppCompatActivity {
 
     private static final int REQ_OVERLAY = 1001;
 
+    private final Handler mainHandler = new Handler(Looper.getMainLooper());
     private BroadcastReceiver statusReceiver = new BroadcastReceiver() {
         @Override public void onReceive(Context context, Intent intent) {
             try {
@@ -75,11 +78,22 @@ public class MainActivity extends AppCompatActivity {
                     int count = intent.getIntExtra(SwipeAccessibilityService.EXTRA_COUNT, 0);
                     String state = intent.getStringExtra(SwipeAccessibilityService.EXTRA_STATE);
                     String sub   = intent.getStringExtra(SwipeAccessibilityService.EXTRA_SUB);
-                    tvRunStatus.setText("状态：" + stateText(running, state) + " ｜ 已完成：" + count + " 轮");
-                    tvRunStatus.setTextColor(running ? 0xFF38BDF8 : ("error".equals(state) ? 0xFFF87171 : 0xFFA1A1AA));
-                    tvRunSub.setText(sub == null || sub.isEmpty() ? "" : "当前：" + sub);
+                    if (tvRunStatus != null) {
+                        tvRunStatus.setText("状态：" + stateText(running, state) + " ｜ 已完成：" + count + " 轮");
+                        tvRunStatus.setTextColor(running ? 0xFF38BDF8 : ("error".equals(state) ? 0xFFF87171 : 0xFFA1A1AA));
+                    }
+                    if (tvRunSub != null) tvRunSub.setText(sub == null || sub.isEmpty() ? "" : "当前：" + sub);
                 } else if (FloatingService.ACTION_FLOATING_UPDATE.equals(a)) {
                     updateOverlayStatus();
+                } else if (SwipeAccessibilityService.ACTION_ACC_STATE_CHANGED.equals(a)) {
+                    // 无障碍服务连接变化，延迟 300ms 再刷一次（Settings.Secure 有写入延迟）
+                    updateAccessibilityStatus();
+                    mainHandler.postDelayed(new Runnable() {
+                        @Override public void run() { updateAccessibilityStatus(); }
+                    }, 300);
+                    mainHandler.postDelayed(new Runnable() {
+                        @Override public void run() { updateAccessibilityStatus(); }
+                    }, 1000);
                 }
             } catch (Throwable t) {
                 toastShort("状态刷新异常：" + safeMsg(t));
@@ -350,6 +364,7 @@ public class MainActivity extends AppCompatActivity {
         IntentFilter f = new IntentFilter();
         f.addAction(SwipeAccessibilityService.ACTION_STATUS_ANS);
         f.addAction(FloatingService.ACTION_FLOATING_UPDATE);
+        f.addAction(SwipeAccessibilityService.ACTION_ACC_STATE_CHANGED);
         try {
             ContextCompat.registerReceiver(this, statusReceiver, f, ContextCompat.RECEIVER_NOT_EXPORTED);
         } catch (Throwable ignored) {}
@@ -593,6 +608,17 @@ public class MainActivity extends AppCompatActivity {
             updateAccessibilityStatus();
             updateOverlayStatus();
             refreshProfileNameUI();
+            // 从无障碍设置页切回来，Settings.Secure 更新有延迟（MIUI/ColorOS 明显）
+            // 300ms、1000ms、2000ms 再刷三次兜底
+            mainHandler.postDelayed(new Runnable() {
+                @Override public void run() { updateAccessibilityStatus(); }
+            }, 300);
+            mainHandler.postDelayed(new Runnable() {
+                @Override public void run() { updateAccessibilityStatus(); }
+            }, 1000);
+            mainHandler.postDelayed(new Runnable() {
+                @Override public void run() { updateAccessibilityStatus(); }
+            }, 2000);
         } catch (Throwable ignored) {}
     }
 
@@ -817,16 +843,77 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private boolean isAccessibilityEnabled() {
-        AccessibilityManager am = (AccessibilityManager) getSystemService(ACCESSIBILITY_SERVICE);
-        if (am == null) return false;
-        List<AccessibilityServiceInfo> list =
-                am.getEnabledAccessibilityServiceList(AccessibilityServiceInfo.FEEDBACK_ALL_MASK);
-        String myId = new ComponentName(this, SwipeAccessibilityService.class).flattenToShortString();
-        for (AccessibilityServiceInfo s : list) {
-            String id = s.getResolveInfo().serviceInfo.packageName + "/" + s.getResolveInfo().serviceInfo.name;
-            if (id.equals(myId)) return true;
-        }
-        return false;
+        // 方法1：AccessibilityManager 列表（可能在部分 ROM 不准，作为次优先）
+        boolean method1 = false;
+        try {
+            AccessibilityManager am = (AccessibilityManager) getSystemService(ACCESSIBILITY_SERVICE);
+            if (am != null && am.isEnabled()) {
+                List<AccessibilityServiceInfo> list =
+                        am.getEnabledAccessibilityServiceList(AccessibilityServiceInfo.FEEDBACK_ALL_MASK);
+                ComponentName cn = new ComponentName(this, SwipeAccessibilityService.class);
+                String shortId = cn.flattenToShortString();
+                String longId  = cn.flattenToString();
+                String pkg     = cn.getPackageName();
+                String cls     = cn.getClassName();
+                for (AccessibilityServiceInfo s : list) {
+                    if (s == null || s.getResolveInfo() == null || s.getResolveInfo().serviceInfo == null) continue;
+                    String p = s.getResolveInfo().serviceInfo.packageName;
+                    String c = s.getResolveInfo().serviceInfo.name;
+                    String id = p + "/" + c;
+                    if (id.equals(shortId) || id.equals(longId)) { method1 = true; break; }
+                    // 有些 ROM 的 c 是短类名（相对 pkg 的相对路径），尝试比对
+                    if (pkg.equals(p) && (cls.equals(c) || cls.endsWith("." + c) || (pkg + c).equals(cls))) {
+                        method1 = true; break;
+                    }
+                }
+            }
+        } catch (Throwable ignored) {}
+
+        // 方法2：读 Settings.Secure enabled_accessibility_services（最可靠，所有系统都会写）
+        boolean method2 = false;
+        try {
+            String enabled = android.provider.Settings.Secure.getString(
+                    getContentResolver(),
+                    android.provider.Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES);
+            if (enabled != null && !enabled.isEmpty()) {
+                ComponentName cn = new ComponentName(this, SwipeAccessibilityService.class);
+                String shortId = cn.flattenToShortString();
+                String longId  = cn.flattenToString();
+                String flatPkg = cn.getPackageName() + "/" + cn.getShortClassName(); // 注意：getShortClassName 可能是 ".SwipeAccessibilityService"
+                String absCls  = cn.getPackageName() + cn.getShortClassName(); // 补成绝对
+                for (String seg : enabled.split(":")) {
+                    seg = seg.trim();
+                    if (seg.isEmpty()) continue;
+                    if (seg.equalsIgnoreCase(shortId)
+                            || seg.equalsIgnoreCase(longId)
+                            || seg.equalsIgnoreCase(flatPkg)
+                            || seg.equalsIgnoreCase(absCls)) {
+                        method2 = true; break;
+                    }
+                    // 再模糊一次：按 / 劈开，两边分别是包名和类名
+                    String[] ps = seg.split("/", 2);
+                    if (ps.length == 2) {
+                        String segPkg = ps[0].trim();
+                        String segCls = ps[1].trim();
+                        String ourPkg = cn.getPackageName();
+                        String ourCls = cn.getClassName();
+                        if (ourPkg.equalsIgnoreCase(segPkg)) {
+                            if (ourCls.equalsIgnoreCase(segCls)
+                                    || ourCls.endsWith("." + segCls)
+                                    || (segCls.startsWith(".") && ourCls.equalsIgnoreCase(segPkg + segCls))) {
+                                method2 = true; break;
+                            }
+                        }
+                    }
+                }
+            }
+        } catch (Throwable ignored) {}
+
+        // 方法3：我们自己的 Service 已经 onServiceConnected（最直接）
+        boolean method3 = (SwipeAccessibilityService.get() != null);
+
+        // 任意一个为真即认为开启（方法2/3 优先级更高，方法1 有缓存延迟）
+        return method2 || method3 || method1;
     }
 
     private void openAccessibilitySettings() {
