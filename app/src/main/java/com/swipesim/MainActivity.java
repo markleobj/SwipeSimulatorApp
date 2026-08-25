@@ -280,6 +280,8 @@ public class MainActivity extends AppCompatActivity {
             putCfgIntent(i);
             safeStartFgService(i);
             askOverlayIfNeeded();
+            // 主界面退到后台（相当于按 Home 键），让悬浮窗显示在其他 APP 上
+            try { moveTaskToBack(true); } catch (Throwable ignored) {}
         }, "显示悬浮窗"));
         btnHideFloat.setOnClickListener(wrap(v -> {
             Intent i = new Intent(MainActivity.this, FloatingService.class);
@@ -307,6 +309,8 @@ public class MainActivity extends AppCompatActivity {
             LocalBroadcastManager.getInstance(MainActivity.this)
                     .sendBroadcast(new Intent(SwipeAccessibilityService.ACTION_START));
             toastShort("已开始运行");
+            // 开始运行后主界面退到后台，用户去目标 APP 上操作
+            try { moveTaskToBack(true); } catch (Throwable ignored) {}
         }, "开始"));
         btnStop.setOnClickListener(wrap(v -> {
             LocalBroadcastManager.getInstance(MainActivity.this)
