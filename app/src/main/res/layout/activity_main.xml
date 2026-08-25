@@ -345,31 +345,86 @@
 
                 <LinearLayout style="@style/ParamRow">
                     <TextView style="@style/ParamLabel" android:text="滑动距离"/>
-                    <TextView android:id="@+id/tv_dist" style="@style/ParamVal" android:text="60%"/>
+                    <LinearLayout android:layout_width="wrap_content" android:layout_height="wrap_content"
+                        android:orientation="horizontal" android:gravity="center_vertical">
+                        <EditText android:id="@+id/et_dist" android:layout_width="58dp" android:layout_height="28dp"
+                            android:background="@drawable/bg_input" android:paddingStart="4dp" android:paddingEnd="4dp"
+                            android:inputType="numberDecimal" android:textColor="@color/text1"
+                            android:textColorHint="@color/text3" android:textSize="13sp"
+                            android:textStyle="bold" android:fontFamily="monospace" android:gravity="center"
+                            android:hint="60"/>
+                        <TextView android:id="@+id/tv_dist_unit" android:layout_width="wrap_content" android:layout_height="wrap_content"
+                            android:textColor="@color/primary" android:textSize="13sp" android:textStyle="bold"
+                            android:layout_marginStart="3dp" android:text="%"/>
+                    </LinearLayout>
                 </LinearLayout>
                 <SeekBar android:id="@+id/sb_dist" style="@style/ParamSeek" android:max="90" android:progress="60"/>
 
                 <LinearLayout style="@style/ParamRow">
                     <TextView style="@style/ParamLabel" android:text="单次滑动时长"/>
-                    <TextView android:id="@+id/tv_dur" style="@style/ParamVal" android:text="500ms"/>
+                    <LinearLayout android:layout_width="wrap_content" android:layout_height="wrap_content"
+                        android:orientation="horizontal" android:gravity="center_vertical">
+                        <EditText android:id="@+id/et_dur" android:layout_width="66dp" android:layout_height="28dp"
+                            android:background="@drawable/bg_input" android:paddingStart="4dp" android:paddingEnd="4dp"
+                            android:inputType="numberDecimal" android:textColor="@color/text1"
+                            android:textColorHint="@color/text3" android:textSize="13sp"
+                            android:textStyle="bold" android:fontFamily="monospace" android:gravity="center"
+                            android:hint="500"/>
+                        <TextView android:id="@+id/tv_dur_unit" android:layout_width="wrap_content" android:layout_height="wrap_content"
+                            android:textColor="@color/primary" android:textSize="12sp" android:textStyle="bold"
+                            android:layout_marginStart="3dp" android:text="ms"/>
+                    </LinearLayout>
                 </LinearLayout>
                 <SeekBar android:id="@+id/sb_dur" style="@style/ParamSeek" android:max="2000" android:progress="500"/>
 
                 <LinearLayout style="@style/ParamRow">
                     <TextView style="@style/ParamLabel" android:text="滑动中途停顿"/>
-                    <TextView android:id="@+id/tv_mid_pause" style="@style/ParamVal" android:text="0ms"/>
+                    <LinearLayout android:layout_width="wrap_content" android:layout_height="wrap_content"
+                        android:orientation="horizontal" android:gravity="center_vertical">
+                        <EditText android:id="@+id/et_mid_pause" android:layout_width="66dp" android:layout_height="28dp"
+                            android:background="@drawable/bg_input" android:paddingStart="4dp" android:paddingEnd="4dp"
+                            android:inputType="numberDecimal" android:textColor="@color/text1"
+                            android:textColorHint="@color/text3" android:textSize="13sp"
+                            android:textStyle="bold" android:fontFamily="monospace" android:gravity="center"
+                            android:hint="0"/>
+                        <TextView android:id="@+id/tv_mid_pause_unit" android:layout_width="wrap_content" android:layout_height="wrap_content"
+                            android:textColor="@color/primary" android:textSize="12sp" android:textStyle="bold"
+                            android:layout_marginStart="3dp" android:text="ms"/>
+                    </LinearLayout>
                 </LinearLayout>
                 <SeekBar android:id="@+id/sb_mid_pause" style="@style/ParamSeek" android:max="5000" android:progress="0"/>
 
                 <LinearLayout style="@style/ParamRow">
                     <TextView style="@style/ParamLabel" android:text="停顿位置"/>
-                    <TextView android:id="@+id/tv_mid_pos" style="@style/ParamVal" android:text="50%"/>
+                    <LinearLayout android:layout_width="wrap_content" android:layout_height="wrap_content"
+                        android:orientation="horizontal" android:gravity="center_vertical">
+                        <EditText android:id="@+id/et_mid_pos" android:layout_width="58dp" android:layout_height="28dp"
+                            android:background="@drawable/bg_input" android:paddingStart="4dp" android:paddingEnd="4dp"
+                            android:inputType="numberDecimal" android:textColor="@color/text1"
+                            android:textColorHint="@color/text3" android:textSize="13sp"
+                            android:textStyle="bold" android:fontFamily="monospace" android:gravity="center"
+                            android:hint="50"/>
+                        <TextView android:id="@+id/tv_mid_pos_unit" android:layout_width="wrap_content" android:layout_height="wrap_content"
+                            android:textColor="@color/primary" android:textSize="13sp" android:textStyle="bold"
+                            android:layout_marginStart="3dp" android:text="%"/>
+                    </LinearLayout>
                 </LinearLayout>
                 <SeekBar android:id="@+id/sb_mid_pos" style="@style/ParamSeek" android:max="90" android:progress="50"/>
 
                 <LinearLayout style="@style/ParamRow">
                     <TextView style="@style/ParamLabel" android:text="起点偏移"/>
-                    <TextView android:id="@+id/tv_offset" style="@style/ParamVal" android:text="50%"/>
+                    <LinearLayout android:layout_width="wrap_content" android:layout_height="wrap_content"
+                        android:orientation="horizontal" android:gravity="center_vertical">
+                        <EditText android:id="@+id/et_offset" android:layout_width="58dp" android:layout_height="28dp"
+                            android:background="@drawable/bg_input" android:paddingStart="4dp" android:paddingEnd="4dp"
+                            android:inputType="numberDecimal" android:textColor="@color/text1"
+                            android:textColorHint="@color/text3" android:textSize="13sp"
+                            android:textStyle="bold" android:fontFamily="monospace" android:gravity="center"
+                            android:hint="50"/>
+                        <TextView android:id="@+id/tv_offset_unit" android:layout_width="wrap_content" android:layout_height="wrap_content"
+                            android:textColor="@color/primary" android:textSize="13sp" android:textStyle="bold"
+                            android:layout_marginStart="3dp" android:text="%"/>
+                    </LinearLayout>
                 </LinearLayout>
                 <SeekBar android:id="@+id/sb_offset" style="@style/ParamSeek" android:max="90" android:progress="50"/>
             </LinearLayout>
@@ -447,7 +502,18 @@
 
             <LinearLayout style="@style/ParamRow">
                 <TextView style="@style/ParamLabel" android:text="每轮间隔（滑动走完/点击轮走完）"/>
-                <TextView android:id="@+id/tv_interval" style="@style/ParamVal" android:text="30s"/>
+                <LinearLayout android:layout_width="wrap_content" android:layout_height="wrap_content"
+                    android:orientation="horizontal" android:gravity="center_vertical">
+                    <EditText android:id="@+id/et_interval" android:layout_width="58dp" android:layout_height="28dp"
+                        android:background="@drawable/bg_input" android:paddingStart="4dp" android:paddingEnd="4dp"
+                        android:inputType="numberDecimal" android:textColor="@color/text1"
+                        android:textColorHint="@color/text3" android:textSize="13sp"
+                        android:textStyle="bold" android:fontFamily="monospace" android:gravity="center"
+                        android:hint="30"/>
+                    <TextView android:id="@+id/tv_interval_unit" android:layout_width="wrap_content" android:layout_height="wrap_content"
+                        android:textColor="@color/primary" android:textSize="13sp" android:textStyle="bold"
+                        android:layout_marginStart="3dp" android:text="s"/>
+                </LinearLayout>
             </LinearLayout>
             <SeekBar
                 android:id="@+id/sb_interval"

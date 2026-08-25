@@ -65,14 +65,35 @@
             android:text="X 坐标"
             android:textColor="@color/text2"
             android:textSize="12sp"/>
-        <TextView
-            android:id="@+id/pt_x_val"
+        <LinearLayout
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="50%"
-            android:textColor="@color/primary"
-            android:textSize="13sp"
-            android:textStyle="bold"/>
+            android:orientation="horizontal"
+            android:gravity="center_vertical">
+            <EditText
+                android:id="@+id/pt_x_val"
+                android:layout_width="48dp"
+                android:layout_height="26dp"
+                android:background="@drawable/bg_input"
+                android:paddingStart="4dp"
+                android:paddingEnd="4dp"
+                android:inputType="numberDecimal"
+                android:textColor="@color/primary"
+                android:textColorHint="@color/text3"
+                android:textSize="12sp"
+                android:textStyle="bold"
+                android:fontFamily="monospace"
+                android:gravity="center"
+                android:hint="50"/>
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="%"
+                android:textColor="@color/primary"
+                android:textSize="12sp"
+                android:textStyle="bold"
+                android:layout_marginStart="2dp"/>
+        </LinearLayout>
     </LinearLayout>
     <SeekBar
         android:id="@+id/pt_x_sb"
@@ -96,14 +117,35 @@
             android:text="Y 坐标"
             android:textColor="@color/text2"
             android:textSize="12sp"/>
-        <TextView
-            android:id="@+id/pt_y_val"
+        <LinearLayout
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="50%"
-            android:textColor="@color/primary"
-            android:textSize="13sp"
-            android:textStyle="bold"/>
+            android:orientation="horizontal"
+            android:gravity="center_vertical">
+            <EditText
+                android:id="@+id/pt_y_val"
+                android:layout_width="48dp"
+                android:layout_height="26dp"
+                android:background="@drawable/bg_input"
+                android:paddingStart="4dp"
+                android:paddingEnd="4dp"
+                android:inputType="numberDecimal"
+                android:textColor="@color/primary"
+                android:textColorHint="@color/text3"
+                android:textSize="12sp"
+                android:textStyle="bold"
+                android:fontFamily="monospace"
+                android:gravity="center"
+                android:hint="50"/>
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="%"
+                android:textColor="@color/primary"
+                android:textSize="12sp"
+                android:textStyle="bold"
+                android:layout_marginStart="2dp"/>
+        </LinearLayout>
     </LinearLayout>
     <SeekBar
         android:id="@+id/pt_y_sb"
@@ -127,14 +169,35 @@
             android:text="点击后延时"
             android:textColor="@color/text2"
             android:textSize="12sp"/>
-        <TextView
-            android:id="@+id/pt_delay_val"
+        <LinearLayout
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="10s"
-            android:textColor="@color/primary"
-            android:textSize="13sp"
-            android:textStyle="bold"/>
+            android:orientation="horizontal"
+            android:gravity="center_vertical">
+            <EditText
+                android:id="@+id/pt_delay_val"
+                android:layout_width="52dp"
+                android:layout_height="26dp"
+                android:background="@drawable/bg_input"
+                android:paddingStart="4dp"
+                android:paddingEnd="4dp"
+                android:inputType="numberDecimal"
+                android:textColor="@color/primary"
+                android:textColorHint="@color/text3"
+                android:textSize="12sp"
+                android:textStyle="bold"
+                android:fontFamily="monospace"
+                android:gravity="center"
+                android:hint="10"/>
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="s"
+                android:textColor="@color/primary"
+                android:textSize="12sp"
+                android:textStyle="bold"
+                android:layout_marginStart="2dp"/>
+        </LinearLayout>
     </LinearLayout>
     <SeekBar
         android:id="@+id/pt_delay_sb"

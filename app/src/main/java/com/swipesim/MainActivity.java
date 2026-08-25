@@ -15,7 +15,9 @@ import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
 import android.provider.Settings;
+import android.text.Editable;
 import android.text.InputType;
+import android.text.TextWatcher;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.accessibility.AccessibilityManager;
@@ -44,8 +46,9 @@ public class MainActivity extends AppCompatActivity {
 
     // ===== 滑动相关 =====
     private TextView dirUp, dirDown, dirLeft, dirRight;
-    private TextView tvDist, tvDur, tvMidPause, tvMidPos, tvOffset, tvInterval;
     private SeekBar sbDist, sbDur, sbMidPause, sbMidPos, sbOffset, sbInterval;
+    private EditText etDist, etDur, etMidPause, etMidPos, etOffset, etInterval;
+    private boolean settingText = false; // 防止 TextWatcher 死循环
 
     // ===== 点击模式 =====
     private View swipeParams, clickParams;
@@ -84,6 +87,12 @@ public class MainActivity extends AppCompatActivity {
                     }
                     if (tvRunSub != null) tvRunSub.setText(sub == null || sub.isEmpty() ? "" : "当前：" + sub);
                 } else if (FloatingService.ACTION_FLOATING_UPDATE.equals(a)) {
+                    // 悬浮窗改了参数 → 重新加载 cfg 并刷新主界面
+                    try {
+                        cfg = SwipeConfig.load(MainActivity.this);
+                        if (cfg.clickPoints == null) cfg.clickPoints = new ArrayList<>();
+                        applyCfgToUi();
+                    } catch (Throwable ignored) {}
                     updateOverlayStatus();
                 } else if (SwipeAccessibilityService.ACTION_ACC_STATE_CHANGED.equals(a)) {
                     // 无障碍服务连接变化，延迟 300ms 再刷一次（Settings.Secure 有写入延迟）
@@ -119,7 +128,8 @@ public class MainActivity extends AppCompatActivity {
     private static class PointRowHolder {
         final View root;
         final int index;
-        final TextView name, xVal, yVal, delayVal, btnCapture, btnRemove;
+        final TextView name, btnCapture, btnRemove;
+        final EditText xVal, yVal, delayVal;
         final SeekBar xSb, ySb, delaySb;
 
         PointRowHolder(View root, int index) {
@@ -163,18 +173,18 @@ public class MainActivity extends AppCompatActivity {
         dirLeft  = findViewById(R.id.dir_left);
         dirRight = findViewById(R.id.dir_right);
 
-        tvDist = findViewById(R.id.tv_dist);
         sbDist = findViewById(R.id.sb_dist);
-        tvDur = findViewById(R.id.tv_dur);
+        etDist = findViewById(R.id.et_dist);
         sbDur = findViewById(R.id.sb_dur);
-        tvMidPause = findViewById(R.id.tv_mid_pause);
+        etDur = findViewById(R.id.et_dur);
         sbMidPause = findViewById(R.id.sb_mid_pause);
-        tvMidPos = findViewById(R.id.tv_mid_pos);
+        etMidPause = findViewById(R.id.et_mid_pause);
         sbMidPos = findViewById(R.id.sb_mid_pos);
-        tvOffset = findViewById(R.id.tv_offset);
+        etMidPos = findViewById(R.id.et_mid_pos);
         sbOffset = findViewById(R.id.sb_offset);
-        tvInterval = findViewById(R.id.tv_interval);
+        etOffset = findViewById(R.id.et_offset);
         sbInterval = findViewById(R.id.sb_interval);
+        etInterval = findViewById(R.id.et_interval);
 
         tvAccStatus = findViewById(R.id.tv_acc_status);
         tvOverlayStatus = findViewById(R.id.tv_overlay_status);
@@ -205,67 +215,25 @@ public class MainActivity extends AppCompatActivity {
         dirRight.setOnClickListener(dirClk);
         refreshDirs();
 
-        // ===== SeekBars =====
-        sbDist.setProgress(Math.max(10, Math.min(90, cfg.distancePct)));
-        tvDist.setText(cfg.distancePct + "%");
-        sbDist.setOnSeekBarChangeListener(new SimpleSB() {
-            @Override public void onProgressChanged(SeekBar sb, int p, boolean user) {
-                int v = Math.max(10, p);
-                if (user) sb.setProgress(v);
-                cfg.distancePct = v;
-                tvDist.setText(v + "%");
-                if (user) saveCfg();
-            }
+        // ===== SeekBars + EditText 双向联动 =====
+        // 每个参数：(SeekBar, EditText, min, max, 初始值, cfg写入回调)
+        setupSwipeParam(sbDist, etDist, 10, 90, cfg.distancePct, new ValSetter() {
+            @Override public void set(int v) { cfg.distancePct = v; }
         });
-
-        sbDur.setProgress(cfg.durationMs);
-        tvDur.setText(cfg.durationMs + "ms");
-        sbDur.setOnSeekBarChangeListener(new SimpleSB() {
-            @Override public void onProgressChanged(SeekBar sb, int p, boolean user) {
-                cfg.durationMs = Math.max(50, p);
-                tvDur.setText(cfg.durationMs + "ms");
-                if (user) saveCfg();
-            }
+        setupSwipeParam(sbDur, etDur, 50, Integer.MAX_VALUE, cfg.durationMs, new ValSetter() {
+            @Override public void set(int v) { cfg.durationMs = v; }
         });
-
-        sbMidPause.setProgress(cfg.midPauseMs);
-        tvMidPause.setText(cfg.midPauseMs + "ms");
-        sbMidPause.setOnSeekBarChangeListener(new SimpleSB() {
-            @Override public void onProgressChanged(SeekBar sb, int p, boolean user) {
-                cfg.midPauseMs = p;
-                tvMidPause.setText(p + "ms");
-                if (user) saveCfg();
-            }
+        setupSwipeParam(sbMidPause, etMidPause, 0, Integer.MAX_VALUE, cfg.midPauseMs, new ValSetter() {
+            @Override public void set(int v) { cfg.midPauseMs = v; }
         });
-
-        sbMidPos.setProgress(cfg.midPausePosPct);
-        tvMidPos.setText(cfg.midPausePosPct + "%");
-        sbMidPos.setOnSeekBarChangeListener(new SimpleSB() {
-            @Override public void onProgressChanged(SeekBar sb, int p, boolean user) {
-                cfg.midPausePosPct = p;
-                tvMidPos.setText(p + "%");
-                if (user) saveCfg();
-            }
+        setupSwipeParam(sbMidPos, etMidPos, 0, 100, cfg.midPausePosPct, new ValSetter() {
+            @Override public void set(int v) { cfg.midPausePosPct = v; }
         });
-
-        sbOffset.setProgress(cfg.startOffsetPct);
-        tvOffset.setText(cfg.startOffsetPct + "%");
-        sbOffset.setOnSeekBarChangeListener(new SimpleSB() {
-            @Override public void onProgressChanged(SeekBar sb, int p, boolean user) {
-                cfg.startOffsetPct = p;
-                tvOffset.setText(p + "%");
-                if (user) saveCfg();
-            }
+        setupSwipeParam(sbOffset, etOffset, 0, 100, cfg.startOffsetPct, new ValSetter() {
+            @Override public void set(int v) { cfg.startOffsetPct = v; }
         });
-
-        sbInterval.setProgress(cfg.intervalSec);
-        tvInterval.setText(cfg.intervalSec + "s");
-        sbInterval.setOnSeekBarChangeListener(new SimpleSB() {
-            @Override public void onProgressChanged(SeekBar sb, int p, boolean user) {
-                cfg.intervalSec = Math.max(1, Math.min(600, p));
-                tvInterval.setText(cfg.intervalSec + "s");
-                if (user) saveCfg();
-            }
+        setupSwipeParam(sbInterval, etInterval, 1, 600, cfg.intervalSec, new ValSetter() {
+            @Override public void set(int v) { cfg.intervalSec = v; }
         });
 
         // ===== Tab =====
@@ -583,19 +551,21 @@ public class MainActivity extends AppCompatActivity {
     private void applyCfgToUi() {
         try {
             switchMode(cfg.mode);
-            // seekbar
-            sbDist.setProgress(Math.max(10, Math.min(90, cfg.distancePct)));
-            sbDur.setProgress(cfg.durationMs);
-            sbMidPause.setProgress(cfg.midPauseMs);
-            sbMidPos.setProgress(cfg.midPausePosPct);
-            sbOffset.setProgress(cfg.startOffsetPct);
-            sbInterval.setProgress(cfg.intervalSec);
-            tvDist.setText(cfg.distancePct + "%");
-            tvDur.setText(cfg.durationMs + "ms");
-            tvMidPause.setText(cfg.midPauseMs + "ms");
-            tvMidPos.setText(cfg.midPausePosPct + "%");
-            tvOffset.setText(cfg.startOffsetPct + "%");
-            tvInterval.setText(cfg.intervalSec + "s");
+            settingText = true;
+            try {
+                sbDist.setProgress(Math.max(10, Math.min(90, cfg.distancePct)));
+                sbDur.setProgress(cfg.durationMs);
+                sbMidPause.setProgress(cfg.midPauseMs);
+                sbMidPos.setProgress(cfg.midPausePosPct);
+                sbOffset.setProgress(cfg.startOffsetPct);
+                sbInterval.setProgress(cfg.intervalSec);
+                etDist.setText(String.valueOf(Math.max(10, Math.min(90, cfg.distancePct))));
+                etDur.setText(String.valueOf(Math.max(50, cfg.durationMs)));
+                etMidPause.setText(String.valueOf(Math.max(0, cfg.midPauseMs)));
+                etMidPos.setText(String.valueOf(Math.max(0, Math.min(100, cfg.midPausePosPct))));
+                etOffset.setText(String.valueOf(Math.max(0, Math.min(100, cfg.startOffsetPct))));
+                etInterval.setText(String.valueOf(Math.max(1, Math.min(600, cfg.intervalSec))));
+            } finally { settingText = false; }
             refreshDirs();
             rebuildPointList();
         } catch (Throwable t) { toastShort("应用配置异常：" + safeMsg(t)); }
@@ -737,32 +707,99 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void bindPointRow(final PointRowHolder h, final ClickPoint pt) {
-        h.xSb.setProgress(pt.xPct);
-        h.ySb.setProgress(pt.yPct);
-        h.delaySb.setProgress(Math.max(0, Math.min(600, pt.delaySec)));
-        h.xVal.setText(pt.xPct + "%");
-        h.yVal.setText(pt.yPct + "%");
-        h.delayVal.setText(Math.max(0, Math.min(600, pt.delaySec)) + "s");
+        // 初始值
+        settingText = true;
+        try {
+            h.xSb.setProgress(pt.xPct);
+            h.ySb.setProgress(pt.yPct);
+            h.delaySb.setProgress(Math.max(0, Math.min(600, pt.delaySec)));
+            h.xVal.setText(String.valueOf(pt.xPct));
+            h.yVal.setText(String.valueOf(pt.yPct));
+            h.delayVal.setText(String.valueOf(Math.max(0, Math.min(600, pt.delaySec))));
+        } finally { settingText = false; }
 
+        // X: SeekBar -> EditText + cfg
         h.xSb.setOnSeekBarChangeListener(new SimpleSB() {
             @Override public void onProgressChanged(SeekBar sb, int p, boolean user) {
                 pt.xPct = p;
-                h.xVal.setText(p + "%");
+                if (!settingText) {
+                    settingText = true;
+                    try { h.xVal.setText(String.valueOf(p)); }
+                    finally { settingText = false; }
+                }
                 if (user) saveCfg();
             }
         });
+        // X: EditText -> SeekBar + cfg
+        h.xVal.addTextChangedListener(new TextWatcher() {
+            @Override public void beforeTextChanged(CharSequence s, int start, int count, int after) {}
+            @Override public void onTextChanged(CharSequence s, int start, int before, int count) {}
+            @Override public void afterTextChanged(Editable s) {
+                if (settingText) return;
+                int v = parseIntSafe(s.toString(), pt.xPct);
+                v = Math.max(0, Math.min(100, v));
+                pt.xPct = v;
+                settingText = true;
+                try { h.xSb.setProgress(v); }
+                finally { settingText = false; }
+                saveCfg();
+            }
+        });
+
+        // Y: SeekBar -> EditText + cfg
         h.ySb.setOnSeekBarChangeListener(new SimpleSB() {
             @Override public void onProgressChanged(SeekBar sb, int p, boolean user) {
                 pt.yPct = p;
-                h.yVal.setText(p + "%");
+                if (!settingText) {
+                    settingText = true;
+                    try { h.yVal.setText(String.valueOf(p)); }
+                    finally { settingText = false; }
+                }
                 if (user) saveCfg();
             }
         });
+        // Y: EditText -> SeekBar + cfg
+        h.yVal.addTextChangedListener(new TextWatcher() {
+            @Override public void beforeTextChanged(CharSequence s, int start, int count, int after) {}
+            @Override public void onTextChanged(CharSequence s, int start, int before, int count) {}
+            @Override public void afterTextChanged(Editable s) {
+                if (settingText) return;
+                int v = parseIntSafe(s.toString(), pt.yPct);
+                v = Math.max(0, Math.min(100, v));
+                pt.yPct = v;
+                settingText = true;
+                try { h.ySb.setProgress(v); }
+                finally { settingText = false; }
+                saveCfg();
+            }
+        });
+
+        // Delay: SeekBar -> EditText + cfg
         h.delaySb.setOnSeekBarChangeListener(new SimpleSB() {
             @Override public void onProgressChanged(SeekBar sb, int p, boolean user) {
-                pt.delaySec = Math.max(0, Math.min(600, p));
-                h.delayVal.setText(pt.delaySec + "s");
+                int v = Math.max(0, Math.min(600, p));
+                pt.delaySec = v;
+                if (!settingText) {
+                    settingText = true;
+                    try { h.delayVal.setText(String.valueOf(v)); }
+                    finally { settingText = false; }
+                }
                 if (user) saveCfg();
+            }
+        });
+        // Delay: EditText -> SeekBar + cfg
+        h.delayVal.addTextChangedListener(new TextWatcher() {
+            @Override public void beforeTextChanged(CharSequence s, int start, int count, int after) {}
+            @Override public void onTextChanged(CharSequence s, int start, int before, int count) {}
+            @Override public void afterTextChanged(Editable s) {
+                if (settingText) return;
+                int v = parseIntSafe(s.toString(), pt.delaySec);
+                v = Math.max(0, Math.min(600, v));
+                pt.delaySec = v;
+                settingText = true;
+                try { h.delaySb.setProgress(v); }
+                finally { settingText = false; }
+                saveCfg();
             }
         });
         h.btnCapture.setOnClickListener(wrap(v -> {
@@ -971,6 +1008,61 @@ public class MainActivity extends AppCompatActivity {
                 }
             }
         };
+    }
+
+    // ===== 滑动参数通用双向联动 =====
+    private interface ValSetter { void set(int v); }
+    private void setupSwipeParam(final SeekBar sb, final EditText et,
+                                 final int min, final int max, int initVal,
+                                 final ValSetter setter) {
+        final int clampedInit = Math.max(min, Math.min(max, initVal));
+        setter.set(clampedInit);
+        settingText = true;
+        try {
+            // 若 SeekBar 的 max 小于我们的逻辑 max，以 SeekBar.xml 为准（比如 duration/midPause 用xml的max）
+            int sbMax = sb.getMax();
+            int sbVal = Math.min(clampedInit, sbMax);
+            sb.setProgress(sbVal);
+            et.setText(String.valueOf(clampedInit));
+        } finally { settingText = false; }
+
+        sb.setOnSeekBarChangeListener(new SimpleSB() {
+            @Override public void onProgressChanged(SeekBar seekBar, int p, boolean user) {
+                int v = Math.max(min, Math.min(max, p));
+                setter.set(v);
+                if (!settingText) {
+                    settingText = true;
+                    try { et.setText(String.valueOf(v)); }
+                    finally { settingText = false; }
+                }
+                if (user) saveCfg();
+            }
+        });
+        et.addTextChangedListener(new TextWatcher() {
+            @Override public void beforeTextChanged(CharSequence s, int start, int count, int after) {}
+            @Override public void onTextChanged(CharSequence s, int start, int before, int count) {}
+            @Override public void afterTextChanged(Editable s) {
+                if (settingText) return;
+                int v = parseIntSafe(s.toString(), Math.max(min, Math.min(max, sb.getProgress())));
+                v = Math.max(min, Math.min(max, v));
+                setter.set(v);
+                settingText = true;
+                try {
+                    int sbMax = sb.getMax();
+                    int sbVal = Math.min(v, sbMax);
+                    if (sb.getProgress() != sbVal) sb.setProgress(sbVal);
+                } finally { settingText = false; }
+                saveCfg();
+            }
+        });
+    }
+
+    private static int parseIntSafe(String s, int def) {
+        if (s == null || s.isEmpty()) return def;
+        try {
+            double d = Double.parseDouble(s.toString());
+            return (int) Math.round(d);
+        } catch (Exception e) { return def; }
     }
 
     private static abstract class SimpleSB implements SeekBar.OnSeekBarChangeListener {

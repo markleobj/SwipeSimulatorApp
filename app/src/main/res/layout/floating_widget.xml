@@ -16,10 +16,10 @@
         android:scaleType="centerInside"
         android:contentDescription="悬浮球"/>
 
-    <!-- 控制面板 -->
+    <!-- 控制面板 ScrollView（因为内容可能长） -->
     <LinearLayout
         android:id="@+id/panel"
-        android:layout_width="240dp"
+        android:layout_width="264dp"
         android:layout_height="wrap_content"
         android:orientation="vertical"
         android:background="@drawable/bg_floating"
@@ -54,14 +54,156 @@
                 android:paddingBottom="2dp"/>
         </LinearLayout>
 
-        <TextView
-            android:id="@+id/tv_params"
+        <!-- 模式切换 Tab -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="28dp"
+            android:orientation="horizontal"
+            android:baselineAligned="false"
+            android:layout_marginBottom="8dp">
+            <TextView
+                android:id="@+id/tab_swipe2"
+                android:layout_width="0dp"
+                android:layout_height="match_parent"
+                android:layout_weight="1"
+                android:gravity="center"
+                android:text="滑动"
+                android:textColor="#FFE2E8F0"
+                android:textSize="12sp"
+                android:background="@drawable/bg_dir_selected"
+                android:textStyle="bold"/>
+            <View android:layout_width="4dp" android:layout_height="1dp"/>
+            <TextView
+                android:id="@+id/tab_click2"
+                android:layout_width="0dp"
+                android:layout_height="match_parent"
+                android:layout_weight="1"
+                android:gravity="center"
+                android:text="点击"
+                android:textColor="#FFE2E8F0"
+                android:textSize="12sp"
+                android:background="@drawable/bg_dir_normal"/>
+        </LinearLayout>
+
+        <!-- ========== 滑动模式专属 ========== -->
+        <LinearLayout
+            android:id="@+id/swipe_panel"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="模式：滑动 · ↓ · 间隔 30s"
-            android:textColor="@color/text2"
-            android:textSize="11sp"
-            android:lineSpacingExtra="2dp"
+            android:orientation="vertical">
+
+            <!-- 方向按钮 -->
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:gravity="center"
+                android:layout_marginBottom="6dp">
+                <TextView android:id="@+id/dir_up" style="@style/DirBtn" android:text="⬆"/>
+            </LinearLayout>
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:gravity="center"
+                android:layout_marginBottom="8dp">
+                <TextView android:id="@+id/dir_left" style="@style/DirBtn" android:text="⬅"/>
+                <View android:layout_width="36dp" android:layout_height="1dp"/>
+                <TextView android:id="@+id/dir_right" style="@style/DirBtn" android:text="➡"/>
+            </LinearLayout>
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:gravity="center"
+                android:layout_marginBottom="10dp">
+                <TextView android:id="@+id/dir_down" style="@style/DirBtn" android:text="⬇"/>
+            </LinearLayout>
+
+            <include layout="@layout/_row_edit" android:id="@+id/row_distance"/>
+            <include layout="@layout/_row_edit" android:id="@+id/row_interval_swipe"/>
+            <include layout="@layout/_row_edit" android:id="@+id/row_duration"/>
+            <include layout="@layout/_row_edit" android:id="@+id/row_midpause"/>
+        </LinearLayout>
+
+        <!-- ========== 点击模式专属 ========== -->
+        <LinearLayout
+            android:id="@+id/click_panel"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:visibility="gone">
+
+            <!-- 顶部：总间隔 + 加点 -->
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:gravity="center_vertical"
+                android:layout_marginBottom="6dp">
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="循环间隔:"
+                    android:textColor="@color/text2"
+                    android:textSize="11sp"
+                    android:layout_marginEnd="4dp"/>
+                <EditText
+                    android:id="@+id/et_interval_click"
+                    android:layout_width="52dp"
+                    android:layout_height="26dp"
+                    android:inputType="numberDecimal"
+                    android:hint="30"
+                    android:textColor="@color/text1"
+                    android:textColorHint="@color/text3"
+                    android:background="@drawable/bg_input"
+                    android:paddingStart="4dp"
+                    android:paddingEnd="4dp"
+                    android:textSize="11sp"
+                    android:gravity="center"/>
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="秒"
+                    android:textColor="@color/text3"
+                    android:textSize="10sp"
+                    android:layout_marginStart="2dp"
+                    android:layout_marginEnd="6dp"/>
+                <View android:layout_width="0dp" android:layout_height="1dp" android:layout_weight="1"/>
+                <TextView
+                    android:id="@+id/btn_add_point"
+                    android:layout_width="wrap_content"
+                    android:layout_height="26dp"
+                    android:gravity="center"
+                    android:background="@drawable/bg_dir_selected"
+                    android:textColor="#FF38BDF8"
+                    android:textSize="11sp"
+                    android:textStyle="bold"
+                    android:paddingStart="10dp"
+                    android:paddingEnd="10dp"
+                    android:text="+ 加点"/>
+            </LinearLayout>
+
+            <!-- 点位列表容器：动态 addView -->
+            <ScrollView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:maxHeight="220dp"
+                android:layout_marginBottom="4dp">
+                <LinearLayout
+                    android:id="@+id/points_container"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"/>
+            </ScrollView>
+        </LinearLayout>
+
+        <!-- ========== 底部：状态 + 次数 + 按钮 ========== -->
+        <View
+            android:layout_width="match_parent"
+            android:layout_height="0.5dp"
+            android:background="#1FE2E8F0"
+            android:layout_marginTop="8dp"
             android:layout_marginBottom="6dp"/>
 
         <TextView
@@ -79,13 +221,22 @@
             android:text="次数: 0"
             android:textColor="@color/text2"
             android:textSize="11sp"
-            android:layout_marginBottom="10dp"/>
+            android:layout_marginBottom="2dp"/>
+        <TextView
+            android:id="@+id/tv_params"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text=""
+            android:textColor="@color/text3"
+            android:textSize="10sp"
+            android:lineSpacingExtra="1dp"
+            android:layout_marginBottom="8dp"/>
 
         <Button
             android:id="@+id/btn_start"
             android:layout_width="match_parent"
             android:layout_height="42dp"
-            android:text="▶ 开始滑动"
+            android:text="▶ 开始"
             android:textStyle="bold"
             android:textSize="14sp"
             android:textColor="@color/bg"
