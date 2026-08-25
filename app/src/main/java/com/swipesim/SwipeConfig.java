@@ -140,4 +140,53 @@ public class SwipeConfig {
         ed.putString("clickPoints", ClickPoint.listToJson(clickPoints));
         ed.apply();
     }
+
+    // ====== 整个配置 <-> JSON（用于 Profile/方案 保存）======
+    public String toJson() {
+        try {
+            JSONObject o = new JSONObject();
+            o.put("mode", mode.name());
+            o.put("dir", direction.name());
+            o.put("distancePct", distancePct);
+            o.put("durationMs", durationMs);
+            o.put("midPauseMs", midPauseMs);
+            o.put("midPausePosPct", midPausePosPct);
+            o.put("startOffsetPct", startOffsetPct);
+            o.put("intervalSec", Math.max(1, Math.min(600, intervalSec)));
+            o.put("clickPoints", new JSONArray(ClickPoint.listToJson(clickPoints)));
+            return o.toString();
+        } catch (Throwable t) { return "{}"; }
+    }
+
+    public static SwipeConfig fromJson(String json) {
+        SwipeConfig c = new SwipeConfig();
+        c.clickPoints.clear();
+        if (json == null || json.isEmpty()) return c;
+        try {
+            JSONObject o = new JSONObject(json);
+            try { c.mode = Mode.valueOf(o.optString("mode", Mode.SWIPE.name())); } catch (Exception ignored) {}
+            try { c.direction = Direction.valueOf(o.optString("dir", Direction.DOWN.name())); } catch (Exception ignored) {}
+            c.distancePct = o.optInt("distancePct", 60);
+            c.durationMs = o.optInt("durationMs", 500);
+            c.midPauseMs = o.optInt("midPauseMs", 0);
+            c.midPausePosPct = o.optInt("midPausePosPct", 50);
+            c.startOffsetPct = o.optInt("startOffsetPct", 50);
+            int iSec = o.optInt("intervalSec", -1);
+            if (iSec >= 1) c.intervalSec = Math.min(600, iSec);
+            else c.intervalSec = Math.max(1, Math.min(600, o.optInt("intervalMs", 30000) / 1000));
+            JSONArray arr = o.optJSONArray("clickPoints");
+            if (arr == null) {
+                String raw = o.optString("clickPointsRaw", null);
+                if (raw != null) c.clickPoints.addAll(ClickPoint.listFromJson(raw));
+            } else {
+                // clickPoints 字段里已经是 JSONArray -> 转成字符串再用现成方法
+                c.clickPoints.addAll(ClickPoint.listFromJson(arr.toString()));
+            }
+            if (c.clickPoints.isEmpty()) {
+                c.clickPoints.add(new ClickPoint(30, 50, 10));
+                c.clickPoints.add(new ClickPoint(70, 50, 10));
+            }
+        } catch (Throwable ignored) {}
+        return c;
+    }
 }

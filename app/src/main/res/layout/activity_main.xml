@@ -142,6 +142,88 @@
             </LinearLayout>
         </LinearLayout>
 
+        <!-- 方案管理 -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:background="@drawable/bg_card"
+            android:padding="14dp"
+            android:layout_marginBottom="12dp">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="方案管理"
+                android:textColor="@color/text2"
+                android:textSize="13sp"
+                android:textStyle="bold"
+                android:layout_marginBottom="8dp"/>
+
+            <TextView
+                android:id="@+id/tv_profile_name"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="当前方案：未命名（可保存为方案）"
+                android:textColor="@color/primary"
+                android:textSize="14sp"
+                android:textStyle="bold"
+                android:layout_marginBottom="10dp"/>
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal">
+
+                <TextView
+                    android:id="@+id/btn_save_new_profile"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:gravity="center"
+                    android:text="💾 保存为新方案"
+                    android:textColor="@color/bg"
+                    android:textStyle="bold"
+                    android:textSize="13sp"
+                    android:paddingVertical="10dp"
+                    android:background="@drawable/bg_btn_primary"
+                    android:layout_marginEnd="8dp"
+                    android:clickable="true"
+                    android:focusable="true"/>
+
+                <TextView
+                    android:id="@+id/btn_save_over_profile"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:gravity="center"
+                    android:text="🔁 覆盖当前方案"
+                    android:textColor="@color/text1"
+                    android:textStyle="bold"
+                    android:textSize="13sp"
+                    android:paddingVertical="10dp"
+                    android:background="@drawable/bg_dir_normal"
+                    android:layout_marginEnd="8dp"
+                    android:clickable="true"
+                    android:focusable="true"/>
+
+                <TextView
+                    android:id="@+id/btn_list_profile"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:gravity="center"
+                    android:text="📂 我的方案"
+                    android:textColor="@color/primary"
+                    android:textStyle="bold"
+                    android:textSize="13sp"
+                    android:paddingVertical="10dp"
+                    android:background="@drawable/bg_dir_selected"
+                    android:clickable="true"
+                    android:focusable="true"/>
+            </LinearLayout>
+        </LinearLayout>
+
         <!-- 权限 -->
         <LinearLayout
             android:layout_width="match_parent"

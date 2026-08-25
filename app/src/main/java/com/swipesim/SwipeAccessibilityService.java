@@ -7,14 +7,13 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
 import android.graphics.Path;
-import android.os.Build;
 import android.os.Handler;
 import android.os.Looper;
 import android.util.DisplayMetrics;
 import android.util.Log;
-import android.view.Display;
 import android.view.WindowManager;
 import android.view.accessibility.AccessibilityEvent;
+import android.widget.Toast;
 
 import androidx.localbroadcastmanager.content.LocalBroadcastManager;
 
@@ -22,46 +21,58 @@ import java.util.List;
 
 public class SwipeAccessibilityService extends AccessibilityService {
 
-    public static final String ACTION_START = "com.swipesim.START";
-    public static final String ACTION_STOP  = "com.swipesim.STOP";
-    public static final String ACTION_SYNC  = "com.swipesim.SYNC";
+    public static final String ACTION_START      = "com.swipesim.START";
+    public static final String ACTION_STOP       = "com.swipesim.STOP";
+    public static final String ACTION_SYNC       = "com.swipesim.SYNC";
     public static final String ACTION_STATUS_REQ = "com.swipesim.STATUS_REQ";
     public static final String ACTION_STATUS_ANS = "com.swipesim.STATUS_ANS";
+
     public static final String EXTRA_RUNNING = "running";
-    public static final String EXTRA_COUNT = "count";
-    public static final String EXTRA_STATE = "state";
-    public static final String EXTRA_MODE = "mode";
-    public static final String EXTRA_SUB = "sub";   // 辅助信息（当前点击第几号点等）
+    public static final String EXTRA_COUNT   = "count";
+    public static final String EXTRA_STATE   = "state";
+    public static final String EXTRA_MODE    = "mode";
+    public static final String EXTRA_SUB     = "sub";
 
     private static final String TAG = "SwipeAcc";
 
-    private static SwipeAccessibilityService sInstance;
-    public static boolean isServiceEnabled() { return sInstance != null; }
+    private static volatile SwipeAccessibilityService sInstance;
     public static SwipeAccessibilityService get() { return sInstance; }
 
-    private final Handler handler = new Handler(Looper.getMainLooper());
-    private boolean running = false;
-    private boolean cancelled = false;
-    private int cycleCount = 0;
+    private SwipeConfig cfg;
+    private volatile boolean running;
+    private volatile boolean cancelled;
+    private int cycleCount;
     private String state = "idle";
     private String subInfo = "";
-    private SwipeConfig cfg;
+
+    private final Handler handler = new Handler(Looper.getMainLooper());
 
     private final BroadcastReceiver receiver = new BroadcastReceiver() {
         @Override public void onReceive(Context context, Intent intent) {
-            String a = intent.getAction();
-            if (ACTION_START.equals(a)) startLoop();
-            else if (ACTION_STOP.equals(a)) stopLoop();
-            else if (ACTION_SYNC.equals(a)) { cfg = SwipeConfig.load(getApplicationContext()); }
-            else if (ACTION_STATUS_REQ.equals(a)) broadcastStatus();
+            try {
+                String a = intent.getAction();
+                if (ACTION_START.equals(a))      startLoop();
+                else if (ACTION_STOP.equals(a)) stopLoop();
+                else if (ACTION_SYNC.equals(a)) {
+                    cfg = SwipeConfig.load(SwipeAccessibilityService.this);
+                    toastShort("已同步最新配置");
+                } else if (ACTION_STATUS_REQ.equals(a)) {
+                    broadcastStatus();
+                }
+            } catch (Throwable t) {
+                Log.e(TAG, "receiver err", t);
+                toastShort("操作异常：" + t.getMessage());
+            }
         }
     };
+
+    // ------------------------------------------------------------
 
     @Override
     public void onCreate() {
         super.onCreate();
         sInstance = this;
-        cfg = SwipeConfig.load(this);
+        try { cfg = SwipeConfig.load(this); } catch (Throwable t) { cfg = new SwipeConfig(); }
         IntentFilter f = new IntentFilter();
         f.addAction(ACTION_START);
         f.addAction(ACTION_STOP);
@@ -73,8 +84,9 @@ public class SwipeAccessibilityService extends AccessibilityService {
     @Override
     public void onDestroy() {
         sInstance = null;
-        LocalBroadcastManager.getInstance(this).unregisterReceiver(receiver);
+        try { LocalBroadcastManager.getInstance(this).unregisterReceiver(receiver); } catch (Throwable ignored) {}
         cancelled = true;
+        running = false;
         super.onDestroy();
     }
 
@@ -84,14 +96,17 @@ public class SwipeAccessibilityService extends AccessibilityService {
     @Override protected void onServiceConnected() {
         super.onServiceConnected();
         sInstance = this;
-        broadcastStatus();
+        try { broadcastStatus(); } catch (Throwable ignored) {}
     }
+
+    // ------------------------------------------------------------
 
     private void setState(String s, String sub) {
         state = s == null ? "" : s;
         subInfo = sub == null ? "" : sub;
-        broadcastStatus();
+        try { broadcastStatus(); } catch (Throwable ignored) {}
     }
+
     private void broadcastStatus() {
         Intent i = new Intent(ACTION_STATUS_ANS);
         i.putExtra(EXTRA_RUNNING, running);
@@ -102,26 +117,96 @@ public class SwipeAccessibilityService extends AccessibilityService {
         LocalBroadcastManager.getInstance(this).sendBroadcast(i);
     }
 
+    // ------------------------------------------------------------
+
+    private void log(String msg) { Log.d(TAG, msg); }
+    private void logWarning(String msg) { Log.w(TAG, msg); }
+    private void toastShort(final String msg) {
+        try {
+            handler.post(new Runnable() {
+                @Override public void run() {
+                    Toast.makeText(SwipeAccessibilityService.this, msg, Toast.LENGTH_SHORT).show();
+                }
+            });
+        } catch (Throwable ignored) {}
+    }
+
+    private DisplayMetrics getScreenMetrics() {
+        DisplayMetrics out = new DisplayMetrics();
+        try {
+            WindowManager wm = (WindowManager) getSystemService(WINDOW_SERVICE);
+            if (wm != null && wm.getDefaultDisplay() != null) {
+                wm.getDefaultDisplay().getRealMetrics(out);
+            }
+        } catch (Throwable t) {
+            Log.e(TAG, "getScreenMetrics err", t);
+        }
+        // 保证不崩，最低兜底值 1080x1920
+        if (out.widthPixels <= 0)  out.widthPixels = 1080;
+        if (out.heightPixels <= 0) out.heightPixels = 1920;
+        return out;
+    }
+
+    private String pointName(int idx) {
+        if (idx < 26) return String.valueOf((char) ('A' + idx));
+        return "P" + (idx + 1);
+    }
+
     // ---------------- 控制 ----------------
 
     public void startLoop() {
-        if (running) return;
-        cfg = SwipeConfig.load(this);
-        running = true;
-        cancelled = false;
-        cycleCount = 0;
-        log("开始循环。模式=" + cfg.mode + "，周期间隔=" + cfg.getIntervalMs() + "ms");
-        setState(cfg.mode == SwipeConfig.Mode.SWIPE ? "swiping" : "clicking", "");
-        handler.post(loopRunnable);
+        try {
+            if (running) return;
+            if (cfg == null) cfg = SwipeConfig.load(this);
+            running = true;
+            cancelled = false;
+            cycleCount = 0;
+            log("开始循环。模式=" + cfg.mode + "，周期间隔=" + cfg.getIntervalMs() + "ms");
+            setState(cfg.mode == SwipeConfig.Mode.SWIPE ? "swiping" : "clicking", "");
+            handler.post(new Runnable() {
+                @Override public void run() {
+                    try { loopRunnable.run(); }
+                    catch (Throwable t) { failSafe(t, "主循环异常"); }
+                }
+            });
+        } catch (Throwable t) {
+            running = false;
+            Log.e(TAG, "startLoop", t);
+            setState("error", "启动失败: " + safeMsg(t));
+            toastShort("启动失败：" + safeMsg(t));
+        }
     }
 
     public void stopLoop() {
-        if (!running) return;
-        cancelled = true;
+        try {
+            if (!running) return;
+            cancelled = true;
+            running = false;
+            try { handler.removeCallbacksAndMessages(null); } catch (Throwable ignored) {}
+            setState("idle", "");
+            log("已停止。完成轮次=" + cycleCount);
+            toastShort("已停止，共 " + cycleCount + " 轮");
+        } catch (Throwable t) {
+            Log.e(TAG, "stopLoop", t);
+        }
+    }
+
+    private void failSafe(Throwable t, String label) {
+        Log.e(TAG, label, t);
         running = false;
-        handler.removeCallbacksAndMessages(null);
-        setState("idle", "");
-        log("已停止。完成轮次=" + cycleCount);
+        cancelled = true;
+        try { handler.removeCallbacksAndMessages(null); } catch (Throwable ignored) {}
+        setState("error", label + ": " + safeMsg(t));
+        toastShort(label + "：" + safeMsg(t));
+    }
+
+    private static String safeMsg(Throwable t) {
+        try {
+            String msg = t == null ? "未知错误" : t.getMessage();
+            if (msg == null || msg.isEmpty()) msg = t == null ? "未知错误" : t.getClass().getSimpleName();
+            if (msg.length() > 80) msg = msg.substring(0, 80) + "…";
+            return msg;
+        } catch (Throwable ignore) { return "异常"; }
     }
 
     // ---------------- 核心循环 ----------------
@@ -131,17 +216,26 @@ public class SwipeAccessibilityService extends AccessibilityService {
             if (cancelled) return;
             final Runnable done = new Runnable() {
                 @Override public void run() {
-                    if (cancelled) return;
-                    cycleCount++;
-                    setState("waiting_next", "");
-                    log("完成第 " + cycleCount + " 轮，等待 " + cfg.getIntervalMs() + "ms 后下一轮");
-                    handler.postDelayed(loopRunnable, cfg.getIntervalMs());
+                    try {
+                        if (cancelled) return;
+                        cycleCount++;
+                        setState("waiting_next", "");
+                        log("完成第 " + cycleCount + " 轮，等待 " + cfg.getIntervalMs() + "ms 后下一轮");
+                        handler.postDelayed(new Runnable() {
+                            @Override public void run() {
+                                try { loopRunnable.run(); }
+                                catch (Throwable t) { failSafe(t, "下一轮调度异常"); }
+                            }
+                        }, cfg.getIntervalMs());
+                    } catch (Throwable t) { failSafe(t, "完成回调异常"); }
                 }
             };
             if (cfg.mode == SwipeConfig.Mode.SWIPE) {
-                performOneSwipe(done);
+                try { performOneSwipe(done); }
+                catch (Throwable t) { failSafe(t, "滑动异常"); }
             } else {
-                performClickCycle(0, done);
+                try { performClickCycle(0, done); }
+                catch (Throwable t) { failSafe(t, "点击循环异常"); }
             }
         }
     };
@@ -152,10 +246,11 @@ public class SwipeAccessibilityService extends AccessibilityService {
         DisplayMetrics dm = getScreenMetrics();
         final int W = dm.widthPixels, H = dm.heightPixels;
 
-        float dist = 0;
+        float dist;
         switch (cfg.direction) {
             case UP:   case DOWN:  dist = H * cfg.distancePct / 100f; break;
             case LEFT: case RIGHT: dist = W * cfg.distancePct / 100f; break;
+            default: dist = 0; break;
         }
         float offPct = cfg.startOffsetPct / 100f;
 
@@ -182,9 +277,15 @@ public class SwipeAccessibilityService extends AccessibilityService {
                 ex = W * (0.5f + cfg.distancePct / 200f);
                 break;
         }
+        // 边界兜底（避免 0/负坐标导致手势失败或崩）
+        final int pad = 4;
+        if (sx < pad) sx = pad; if (sy < pad) sy = pad;
+        if (ex < pad) ex = pad; if (ey < pad) ey = pad;
+        if (sx > W - pad) sx = W - pad; if (sy > H - pad) sy = H - pad;
+        if (ex > W - pad) ex = W - pad; if (ey > H - pad) ey = H - pad;
 
         final float fsx = sx, fsy = sy, fex = ex, fey = ey;
-        final float ratio = cfg.midPausePosPct / 100f;
+        final float ratio = Math.max(0, Math.min(1, cfg.midPausePosPct / 100f));
         final float mx = fsx + (fex - fsx) * ratio;
         final float my = fsy + (fey - fsy) * ratio;
 
@@ -192,43 +293,65 @@ public class SwipeAccessibilityService extends AccessibilityService {
         final int secondDur = Math.max(40, cfg.durationMs - firstDur);
         final int fFirstDur = Math.max(40, firstDur);
 
-        setState("swiping", "");
+        setState("swiping", "距离=" + (int)dist + "px 时长=" + cfg.durationMs + "ms");
         dispatchSwipe(fsx, fsy, mx, my, fFirstDur, new Runnable() {
             @Override public void run() {
-                if (cancelled) return;
-                if (cfg.midPauseMs > 0) {
-                    setState("pausing_mid", cfg.midPauseMs + "ms");
-                    log("中途暂停 " + cfg.midPauseMs + "ms");
-                    handler.postDelayed(new Runnable() {
-                        @Override public void run() {
-                            if (cancelled) return;
-                            setState("swiping", "");
-                            dispatchSwipe(mx, my, fex, fey, secondDur, cb);
-                        }
-                    }, cfg.midPauseMs);
-                } else {
-                    dispatchSwipe(mx, my, fex, fey, secondDur, cb);
-                }
+                try {
+                    if (cancelled) return;
+                    if (cfg.midPauseMs > 0) {
+                        setState("pausing_mid", cfg.midPauseMs + "ms");
+                        log("中途暂停 " + cfg.midPauseMs + "ms");
+                        handler.postDelayed(new Runnable() {
+                            @Override public void run() {
+                                try {
+                                    if (cancelled) return;
+                                    setState("swiping", "");
+                                    dispatchSwipe(mx, my, fex, fey, secondDur, cb);
+                                } catch (Throwable t) { failSafe(t, "第二段滑动异常"); }
+                            }
+                        }, cfg.midPauseMs);
+                    } else {
+                        dispatchSwipe(mx, my, fex, fey, secondDur, cb);
+                    }
+                } catch (Throwable t) { failSafe(t, "滑动回调异常"); }
             }
         });
     }
 
     private void dispatchSwipe(float x1, float y1, float x2, float y2, int dur, final Runnable onDone) {
-        Path p = new Path();
-        p.moveTo(x1, y1);
-        p.lineTo(x2, y2);
-        GestureDescription.Builder b = new GestureDescription.Builder();
-        b.addStroke(new GestureDescription.StrokeDescription(p, 0, dur));
-        boolean ok = dispatchGesture(b.build(), new GestureResultCallback() {
-            @Override public void onCompleted(GestureDescription g) {
+        try {
+            Path p = new Path();
+            p.moveTo(x1, y1);
+            p.lineTo(x2, y2);
+            GestureDescription.Builder b = new GestureDescription.Builder();
+            b.addStroke(new GestureDescription.StrokeDescription(p, 0, Math.max(10, dur)));
+            boolean ok = dispatchGesture(b.build(), new GestureResultCallback() {
+                @Override public void onCompleted(GestureDescription g) {
+                    if (onDone != null) handler.post(new Runnable() {
+                        @Override public void run() {
+                            try { onDone.run(); } catch (Throwable t) { failSafe(t, "swipe done 异常"); }
+                        }
+                    });
+                }
+                @Override public void onCancelled(GestureDescription g) {
+                    logWarning("swipe 被取消");
+                    if (onDone != null) handler.post(new Runnable() {
+                        @Override public void run() {
+                            try { onDone.run(); } catch (Throwable t) { failSafe(t, "swipe cancel 异常"); }
+                        }
+                    });
+                }
+            }, null);
+            if (!ok) {
+                logWarning("dispatchSwipe 返回 false  （需 Android 7.0+）");
+                toastShort("手势下发失败（需 Android 7.0+）");
                 if (onDone != null) handler.post(onDone);
             }
-            @Override public void onCancelled(GestureDescription g) {
-                logWarning("swipe 被取消");
-                if (onDone != null) handler.post(onDone);
-            }
-        }, null);
-        if (!ok) logWarning("dispatchSwipe 返回 false");
+        } catch (Throwable t) {
+            Log.e(TAG, "dispatchSwipe", t);
+            toastShort("滑动下发失败：" + safeMsg(t));
+            if (onDone != null) handler.post(onDone);
+        }
     }
 
     // ---------- 多点点击模式 ----------
@@ -238,91 +361,86 @@ public class SwipeAccessibilityService extends AccessibilityService {
         final List<SwipeConfig.ClickPoint> points = cfg.clickPoints;
         if (points == null || points.isEmpty()) {
             logWarning("点击点为空，跳过该轮");
-            cb.run();
+            try { cb.run(); } catch (Throwable t) { failSafe(t, "cb 异常"); }
             return;
         }
         if (idx >= points.size()) {
-            cb.run();
+            try { cb.run(); } catch (Throwable t) { failSafe(t, "cb 异常"); }
             return;
         }
         final SwipeConfig.ClickPoint pt = points.get(idx);
         final String name = pointName(idx);
+        final int safeX = Math.max(0, Math.min(100, pt.xPct));
+        final int safeY = Math.max(0, Math.min(100, pt.yPct));
+        final int safeDelaySec = Math.max(0, Math.min(600, pt.delaySec));
         DisplayMetrics dm = getScreenMetrics();
-        final float x = dm.widthPixels * (pt.xPct / 100f);
-        final float y = dm.heightPixels * (pt.yPct / 100f);
-        setState("clicking", name + "(" + pt.xPct + "%," + pt.yPct + "%)");
-        final int afterDelayMs = Math.max(0, pt.delaySec) * 1000;
-        log("点击 " + name + " -> (" + pt.xPct + "%, " + pt.yPct + "%)  点后延时=" + pt.delaySec + "s");
+        final float x = dm.widthPixels * (safeX / 100f);
+        final float y = dm.heightPixels * (safeY / 100f);
+        setState("clicking", name + "(" + safeX + "%," + safeY + "%)");
+        final int afterDelayMs = safeDelaySec * 1000;
+        log("点击 " + name + " -> (" + safeX + "%, " + safeY + "%)  点后延时=" + safeDelaySec + "s");
 
         dispatchClick(x, y, new Runnable() {
             @Override public void run() {
-                if (cancelled) return;
-                if (afterDelayMs > 0 && idx < points.size() - 1) {
-                    // 不是最后一个点，等待该点自己的 delay
-                    setState("waiting_point", name + " 后等待" + pt.delaySec + "s");
-                    handler.postDelayed(new Runnable() {
-                        @Override public void run() {
-                            performClickCycle(idx + 1, cb);
-                        }
-                    }, afterDelayMs);
-                } else if (afterDelayMs > 0 && idx == points.size() - 1) {
-                    // 最后一个点的 delay：等待后再结束本轮
-                    setState("waiting_point", name + " 后等待" + pt.delaySec + "s");
-                    handler.postDelayed(new Runnable() {
-                        @Override public void run() {
-                            performClickCycle(idx + 1, cb);
-                        }
-                    }, afterDelayMs);
-                } else {
-                    performClickCycle(idx + 1, cb);
-                }
+                try {
+                    if (cancelled) return;
+                    if (afterDelayMs > 0) {
+                        setState("waiting_point", name + " 后等待 " + safeDelaySec + "s");
+                        handler.postDelayed(new Runnable() {
+                            @Override public void run() {
+                                try {
+                                    if (cancelled) return;
+                                    performClickCycle(idx + 1, cb);
+                                } catch (Throwable t) { failSafe(t, "下一个点异常"); }
+                            }
+                        }, afterDelayMs);
+                    } else {
+                        performClickCycle(idx + 1, cb);
+                    }
+                } catch (Throwable t) { failSafe(t, name + " 点击后异常"); }
             }
         });
     }
 
-    private String pointName(int i) {
-        if (i < 0) return "";
-        StringBuilder sb = new StringBuilder();
-        while (true) {
-            sb.insert(0, (char)('A' + (i % 26)));
-            i = i / 26 - 1;
-            if (i < 0) break;
-        }
-        return sb.toString() + " 点";
-    }
-
     private void dispatchClick(float x, float y, final Runnable onDone) {
-        // Single-stroke tap: stay at (x,y) for ~100ms
-        Path p = new Path();
-        p.moveTo(x, y);
-        GestureDescription.Builder b = new GestureDescription.Builder();
-        b.addStroke(new GestureDescription.StrokeDescription(p, 0, 100));
-        boolean ok = dispatchGesture(b.build(), new GestureResultCallback() {
-            @Override public void onCompleted(GestureDescription g) {
+        try {
+            // 边界兜底：不能太靠边（0 或等于宽/高会失败）
+            DisplayMetrics dm = getScreenMetrics();
+            final int pad = 2;
+            float cx = Math.max(pad, Math.min(dm.widthPixels - pad, x));
+            float cy = Math.max(pad, Math.min(dm.heightPixels - pad, y));
+
+            Path p = new Path();
+            p.moveTo(cx, cy);
+            GestureDescription.Builder b = new GestureDescription.Builder();
+            // 典型点击：按住 8ms，然后抬起，总体长 20ms 模拟真实
+            b.addStroke(new GestureDescription.StrokeDescription(p, 0, 30));
+            boolean ok = dispatchGesture(b.build(), new GestureResultCallback() {
+                @Override public void onCompleted(GestureDescription g) {
+                    if (onDone != null) handler.post(new Runnable() {
+                        @Override public void run() {
+                            try { onDone.run(); } catch (Throwable t) { failSafe(t, "click done 异常"); }
+                        }
+                    });
+                }
+                @Override public void onCancelled(GestureDescription g) {
+                    logWarning("click 被取消");
+                    if (onDone != null) handler.post(new Runnable() {
+                        @Override public void run() {
+                            try { onDone.run(); } catch (Throwable t) { failSafe(t, "click cancel 异常"); }
+                        }
+                    });
+                }
+            }, null);
+            if (!ok) {
+                logWarning("dispatchClick 返回 false  （需 Android 7.0+）");
+                toastShort("点击下发失败（需 Android 7.0+）");
                 if (onDone != null) handler.post(onDone);
             }
-            @Override public void onCancelled(GestureDescription g) {
-                logWarning("click 被取消");
-                if (onDone != null) handler.post(onDone);
-            }
-        }, null);
-        if (!ok) logWarning("dispatchClick 返回 false");
-    }
-
-    // ---------- 工具 ----------
-
-    private DisplayMetrics getScreenMetrics() {
-        WindowManager wm = (WindowManager) getSystemService(WINDOW_SERVICE);
-        DisplayMetrics dm = new DisplayMetrics();
-        Display d = wm.getDefaultDisplay();
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.JELLY_BEAN_MR1) {
-            d.getRealMetrics(dm);
-        } else {
-            d.getMetrics(dm);
+        } catch (Throwable t) {
+            Log.e(TAG, "dispatchClick", t);
+            toastShort("点击下发失败：" + safeMsg(t));
+            if (onDone != null) handler.post(onDone);
         }
-        return dm;
     }
-
-    private void log(String s) { Log.d(TAG, s); }
-    private void logWarning(String s) { Log.w(TAG, s); }
 }
