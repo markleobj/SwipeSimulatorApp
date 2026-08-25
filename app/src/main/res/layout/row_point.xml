@@ -1,0 +1,145 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="vertical"
+    android:background="@drawable/bg_dir_normal"
+    android:padding="12dp"
+    android:layout_marginBottom="10dp">
+
+    <!-- 第一行：名称 + 采点 + 删除 -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:gravity="center_vertical"
+        android:layout_marginBottom="10dp">
+
+        <TextView
+            android:id="@+id/pt_name"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="A 点"
+            android:textColor="@color/text1"
+            android:textSize="15sp"
+            android:textStyle="bold"/>
+
+        <TextView
+            android:id="@+id/btn_capture_point"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="🎯 采点"
+            android:textColor="@color/primary"
+            android:textStyle="bold"
+            android:textSize="13sp"
+            android:paddingHorizontal="10dp"
+            android:paddingVertical="6dp"
+            android:background="@drawable/bg_dir_selected"/>
+
+        <TextView
+            android:id="@+id/btn_remove_point"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="8dp"
+            android:text="✕ 删除"
+            android:textColor="#E2E8F0"
+            android:textStyle="bold"
+            android:textSize="13sp"
+            android:paddingHorizontal="10dp"
+            android:paddingVertical="6dp"
+            android:background="@drawable/bg_card"/>
+    </LinearLayout>
+
+    <!-- 第二行：X% -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:gravity="center_vertical"
+        android:layout_marginBottom="2dp">
+        <TextView
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="X 坐标"
+            android:textColor="@color/text2"
+            android:textSize="12sp"/>
+        <TextView
+            android:id="@+id/pt_x_val"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="50%"
+            android:textColor="@color/primary"
+            android:textSize="13sp"
+            android:textStyle="bold"/>
+    </LinearLayout>
+    <SeekBar
+        android:id="@+id/pt_x_sb"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:max="100"
+        android:progress="50"
+        android:layout_marginBottom="6dp"/>
+
+    <!-- 第三行：Y% -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:gravity="center_vertical"
+        android:layout_marginBottom="2dp">
+        <TextView
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="Y 坐标"
+            android:textColor="@color/text2"
+            android:textSize="12sp"/>
+        <TextView
+            android:id="@+id/pt_y_val"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="50%"
+            android:textColor="@color/primary"
+            android:textSize="13sp"
+            android:textStyle="bold"/>
+    </LinearLayout>
+    <SeekBar
+        android:id="@+id/pt_y_sb"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:max="100"
+        android:progress="50"
+        android:layout_marginBottom="6dp"/>
+
+    <!-- 第四行：延时秒（点击后等多久，max 600s） -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:gravity="center_vertical"
+        android:layout_marginBottom="2dp">
+        <TextView
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="点击后延时"
+            android:textColor="@color/text2"
+            android:textSize="12sp"/>
+        <TextView
+            android:id="@+id/pt_delay_val"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="10s"
+            android:textColor="@color/primary"
+            android:textSize="13sp"
+            android:textStyle="bold"/>
+    </LinearLayout>
+    <SeekBar
+        android:id="@+id/pt_delay_sb"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:max="600"
+        android:progress="10"/>
+</LinearLayout>

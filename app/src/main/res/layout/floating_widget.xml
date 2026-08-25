@@ -4,7 +4,7 @@
     android:layout_height="wrap_content"
     android:orientation="vertical">
 
-    <!-- 悬浮球手柄（可拖动，点击展开/收起 panel） -->
+    <!-- 悬浮球手柄 -->
     <ImageView
         android:id="@+id/handle"
         android:layout_width="56dp"
@@ -19,7 +19,7 @@
     <!-- 控制面板 -->
     <LinearLayout
         android:id="@+id/panel"
-        android:layout_width="220dp"
+        android:layout_width="240dp"
         android:layout_height="wrap_content"
         android:orientation="vertical"
         android:background="@drawable/bg_floating"
@@ -53,6 +53,16 @@
                 android:paddingTop="2dp"
                 android:paddingBottom="2dp"/>
         </LinearLayout>
+
+        <TextView
+            android:id="@+id/tv_params"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="模式：滑动 · ↓ · 间隔 30s"
+            android:textColor="@color/text2"
+            android:textSize="11sp"
+            android:lineSpacingExtra="2dp"
+            android:layout_marginBottom="6dp"/>
 
         <TextView
             android:id="@+id/tv_status"

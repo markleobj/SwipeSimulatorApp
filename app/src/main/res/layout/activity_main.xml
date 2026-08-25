@@ -19,7 +19,46 @@
             android:textSize="22sp"
             android:textStyle="bold"
             android:layout_gravity="center_horizontal"
-            android:layout_marginBottom="16dp"/>
+            android:layout_marginBottom="12dp"/>
+
+        <!-- 模式切换 Tab -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:layout_marginBottom="12dp"
+            android:background="@drawable/bg_card"
+            android:padding="4dp">
+
+            <TextView
+                android:id="@+id/tab_swipe"
+                android:layout_width="0dp"
+                android:layout_height="42dp"
+                android:layout_weight="1"
+                android:gravity="center"
+                android:text="↕️ 滑动模式"
+                android:textStyle="bold"
+                android:textSize="14sp"
+                android:textColor="@color/primary"
+                android:background="@drawable/bg_dir_selected"
+                android:layout_marginEnd="2dp"
+                android:clickable="true"
+                android:focusable="true"/>
+
+            <TextView
+                android:id="@+id/tab_click"
+                android:layout_width="0dp"
+                android:layout_height="42dp"
+                android:layout_weight="1"
+                android:gravity="center"
+                android:text="👆 多点点击"
+                android:textStyle="bold"
+                android:textSize="14sp"
+                android:textColor="@color/text1"
+                android:background="@drawable/bg_dir_normal"
+                android:clickable="true"
+                android:focusable="true"/>
+        </LinearLayout>
 
         <!-- 运行状态 -->
         <LinearLayout
@@ -43,9 +82,17 @@
                 android:id="@+id/tv_run_status"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="状态：空闲 ｜ 已滑动：0 次"
+                android:text="状态：空闲 ｜ 已完成：0 轮"
                 android:textColor="@color/primary"
                 android:textSize="14sp"
+                android:layout_marginBottom="4dp"/>
+            <TextView
+                android:id="@+id/tv_run_sub"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text=""
+                android:textColor="@color/text3"
+                android:textSize="12sp"
                 android:layout_marginBottom="12dp"/>
 
             <LinearLayout
@@ -132,10 +179,8 @@
                     android:layout_height="wrap_content"
                     android:textSize="13sp"
                     android:textStyle="bold"
-                    android:paddingStart="10dp"
-                    android:paddingEnd="10dp"
-                    android:paddingTop="4dp"
-                    android:paddingBottom="4dp"/>
+                    android:paddingHorizontal="10dp"
+                    android:paddingVertical="4dp"/>
             </LinearLayout>
 
             <LinearLayout
@@ -156,14 +201,160 @@
                     android:layout_height="wrap_content"
                     android:textSize="13sp"
                     android:textStyle="bold"
-                    android:paddingStart="10dp"
-                    android:paddingEnd="10dp"
-                    android:paddingTop="4dp"
-                    android:paddingBottom="4dp"/>
+                    android:paddingHorizontal="10dp"
+                    android:paddingVertical="4dp"/>
             </LinearLayout>
         </LinearLayout>
 
-        <!-- 方向 -->
+        <!-- ============ 滑动模式参数 ============ -->
+        <LinearLayout
+            android:id="@+id/swipe_params"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:visibility="visible">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:background="@drawable/bg_card"
+                android:padding="14dp"
+                android:layout_marginBottom="12dp">
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="滑动方向"
+                    android:textColor="@color/text2"
+                    android:textSize="13sp"
+                    android:textStyle="bold"
+                    android:layout_marginBottom="10dp"/>
+
+                <LinearLayout
+                    android:id="@+id/dir_group"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal">
+
+                    <TextView android:id="@+id/dir_up"   style="@style/DirBtn" android:layout_marginEnd="8dp" android:text="↑ 向上"/>
+                    <TextView android:id="@+id/dir_down" style="@style/DirBtn" android:layout_marginEnd="8dp" android:text="↓ 向下"/>
+                    <TextView android:id="@+id/dir_left" style="@style/DirBtn" android:layout_marginEnd="8dp" android:text="← 向左"/>
+                    <TextView android:id="@+id/dir_right" style="@style/DirBtn" android:text="→ 向右"/>
+                </LinearLayout>
+            </LinearLayout>
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:background="@drawable/bg_card"
+                android:padding="14dp"
+                android:layout_marginBottom="12dp">
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="滑动参数"
+                    android:textColor="@color/text2"
+                    android:textSize="13sp"
+                    android:textStyle="bold"
+                    android:layout_marginBottom="14dp"/>
+
+                <LinearLayout style="@style/ParamRow">
+                    <TextView style="@style/ParamLabel" android:text="滑动距离"/>
+                    <TextView android:id="@+id/tv_dist" style="@style/ParamVal" android:text="60%"/>
+                </LinearLayout>
+                <SeekBar android:id="@+id/sb_dist" style="@style/ParamSeek" android:max="90" android:progress="60"/>
+
+                <LinearLayout style="@style/ParamRow">
+                    <TextView style="@style/ParamLabel" android:text="单次滑动时长"/>
+                    <TextView android:id="@+id/tv_dur" style="@style/ParamVal" android:text="500ms"/>
+                </LinearLayout>
+                <SeekBar android:id="@+id/sb_dur" style="@style/ParamSeek" android:max="2000" android:progress="500"/>
+
+                <LinearLayout style="@style/ParamRow">
+                    <TextView style="@style/ParamLabel" android:text="滑动中途停顿"/>
+                    <TextView android:id="@+id/tv_mid_pause" style="@style/ParamVal" android:text="0ms"/>
+                </LinearLayout>
+                <SeekBar android:id="@+id/sb_mid_pause" style="@style/ParamSeek" android:max="5000" android:progress="0"/>
+
+                <LinearLayout style="@style/ParamRow">
+                    <TextView style="@style/ParamLabel" android:text="停顿位置"/>
+                    <TextView android:id="@+id/tv_mid_pos" style="@style/ParamVal" android:text="50%"/>
+                </LinearLayout>
+                <SeekBar android:id="@+id/sb_mid_pos" style="@style/ParamSeek" android:max="90" android:progress="50"/>
+
+                <LinearLayout style="@style/ParamRow">
+                    <TextView style="@style/ParamLabel" android:text="起点偏移"/>
+                    <TextView android:id="@+id/tv_offset" style="@style/ParamVal" android:text="50%"/>
+                </LinearLayout>
+                <SeekBar android:id="@+id/sb_offset" style="@style/ParamSeek" android:max="90" android:progress="50"/>
+            </LinearLayout>
+        </LinearLayout>
+
+        <!-- ============ 点击模式参数 ============ -->
+        <LinearLayout
+            android:id="@+id/click_params"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:visibility="gone">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:background="@drawable/bg_card"
+                android:padding="14dp"
+                android:layout_marginBottom="12dp">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal"
+                    android:gravity="center_vertical"
+                    android:layout_marginBottom="10dp">
+
+                    <TextView
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:text="点击点"
+                        android:textColor="@color/text2"
+                        android:textSize="13sp"
+                        android:textStyle="bold"/>
+
+                    <TextView
+                        android:id="@+id/btn_add_point"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="➕ 添加点 (最多8个)"
+                        android:textColor="@color/primary"
+                        android:textStyle="bold"
+                        android:textSize="13sp"
+                        android:paddingHorizontal="10dp"
+                        android:paddingVertical="6dp"
+                        android:background="@drawable/bg_dir_normal"/>
+                </LinearLayout>
+
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="顺序执行：A→延时→B→延时→C→延时→…→循环"
+                    android:textColor="@color/text3"
+                    android:textSize="12sp"
+                    android:layout_marginBottom="10dp"/>
+
+                <LinearLayout
+                    android:id="@+id/point_container"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"/>
+            </LinearLayout>
+        </LinearLayout>
+
+        <!-- ============ 公共参数 ============ -->
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
@@ -172,129 +363,8 @@
             android:padding="14dp"
             android:layout_marginBottom="12dp">
 
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="滑动方向"
-                android:textColor="@color/text2"
-                android:textSize="13sp"
-                android:textStyle="bold"
-                android:layout_marginBottom="10dp"/>
-
-            <LinearLayout
-                android:id="@+id/dir_group"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:orientation="horizontal">
-
-                <TextView
-                    android:id="@+id/dir_up"
-                    style="@style/DirBtn"
-                    android:layout_marginEnd="8dp"
-                    android:text="↑ 向上"/>
-
-                <TextView
-                    android:id="@+id/dir_down"
-                    style="@style/DirBtn"
-                    android:layout_marginEnd="8dp"
-                    android:text="↓ 向下"/>
-
-                <TextView
-                    android:id="@+id/dir_left"
-                    style="@style/DirBtn"
-                    android:layout_marginEnd="8dp"
-                    android:text="← 向左"/>
-
-                <TextView
-                    android:id="@+id/dir_right"
-                    style="@style/DirBtn"
-                    android:text="→ 向右"/>
-            </LinearLayout>
-        </LinearLayout>
-
-        <!-- 参数 -->
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:orientation="vertical"
-            android:background="@drawable/bg_card"
-            android:padding="14dp"
-            android:layout_marginBottom="12dp">
-
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="滑动参数"
-                android:textColor="@color/text2"
-                android:textSize="13sp"
-                android:textStyle="bold"
-                android:layout_marginBottom="14dp"/>
-
-            <LinearLayout
-                style="@style/ParamRow">
-                <TextView style="@style/ParamLabel" android:text="滑动距离"/>
-                <TextView android:id="@+id/tv_dist" style="@style/ParamVal" android:text="60%"/>
-            </LinearLayout>
-            <SeekBar
-                android:id="@+id/sb_dist"
-                style="@style/ParamSeek"
-                android:max="90"
-                android:progress="60"/>
-
-            <LinearLayout
-                style="@style/ParamRow">
-                <TextView style="@style/ParamLabel" android:text="单次滑动时长"/>
-                <TextView android:id="@+id/tv_dur" style="@style/ParamVal" android:text="500ms"/>
-            </LinearLayout>
-            <SeekBar
-                android:id="@+id/sb_dur"
-                style="@style/ParamSeek"
-                android:max="2000"
-                android:progress="500"/>
-
-            <LinearLayout
-                style="@style/ParamRow">
-                <TextView style="@style/ParamLabel" android:text="滑动中途停顿"/>
-                <TextView android:id="@+id/tv_mid_pause" style="@style/ParamVal" android:text="0ms"/>
-            </LinearLayout>
-            <SeekBar
-                android:id="@+id/sb_mid_pause"
-                style="@style/ParamSeek"
-                android:max="5000"
-                android:progress="0"/>
-
-            <LinearLayout
-                style="@style/ParamRow">
-                <TextView style="@style/ParamLabel" android:text="停顿位置"/>
-                <TextView android:id="@+id/tv_mid_pos" style="@style/ParamVal" android:text="50%"/>
-            </LinearLayout>
-            <SeekBar
-                android:id="@+id/sb_mid_pos"
-                style="@style/ParamSeek"
-                android:max="90"
-                android:progress="50"/>
-
-            <LinearLayout
-                style="@style/ParamRow">
-                <TextView style="@style/ParamLabel" android:text="起点偏移"/>
-                <TextView android:id="@+id/tv_offset" style="@style/ParamVal" android:text="50%"/>
-            </LinearLayout>
-            <SeekBar
-                android:id="@+id/sb_offset"
-                style="@style/ParamSeek"
-                android:max="90"
-                android:progress="50"/>
-
-            <View
-                android:layout_width="match_parent"
-                android:layout_height="1dp"
-                android:background="@color/divider"
-                android:layout_marginTop="10dp"
-                android:layout_marginBottom="12dp"/>
-
-            <LinearLayout
-                style="@style/ParamRow">
-                <TextView style="@style/ParamLabel" android:text="滑动间隔（等待）"/>
+            <LinearLayout style="@style/ParamRow">
+                <TextView style="@style/ParamLabel" android:text="每轮间隔（滑动走完/点击轮走完）"/>
                 <TextView android:id="@+id/tv_interval" style="@style/ParamVal" android:text="30s"/>
             </LinearLayout>
             <SeekBar
@@ -302,14 +372,13 @@
                 style="@style/ParamSeek"
                 android:max="600"
                 android:progress="30"/>
-
             <TextView
+                android:id="@+id/tv_interval_tip"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:text="💡 流程：滑动 → 等待配置秒数 → 再滑动… 循环直到停止"
+                android:text="💡 滑动模式：滑动一次→等待→再滑动\n💡 点击模式：A/B/C全部走完一轮→等待→再来一轮"
                 android:textColor="@color/text3"
-                android:textSize="12sp"
-                android:layout_marginTop="8dp"/>
+                android:textSize="12sp"/>
         </LinearLayout>
 
         <!-- 说明 -->
@@ -331,7 +400,7 @@
             <TextView
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:text="1. 开启无障碍服务 + 悬浮窗权限\n2. 配置方向、距离、间隔秒数（默认30秒）\n3. 点「显示悬浮窗」，自动退到桌面，打开视频APP\n4. 拖动悬浮球移动位置，点击展开/收起面板\n5. 点「▶ 开始滑动」开始循环；点「■ 停止」随时结束"
+                android:text="1. 开「无障碍服务」+「悬浮窗权限」\n2. 顶部切换模式：滑动 或 多点点击\n3. 点击模式：点「➕ 添加点」，每个点可以直接拉条调 X/Y/延时，或点「采点」在全屏拖十字准星可视化选位置\n4. 「显示悬浮窗」后退到桌面 → 打开目标 APP → 悬浮球展开面板开始\n5. 所有延时/间隔上限 600 秒"
                 android:textColor="@color/text2"
                 android:textSize="12sp"
                 android:lineSpacingExtra="4dp"/>

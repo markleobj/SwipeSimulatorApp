@@ -3,42 +3,141 @@ package com.swipesim;
 import android.content.Context;
 import android.content.SharedPreferences;
 
+import org.json.JSONArray;
+import org.json.JSONException;
+import org.json.JSONObject;
+
+import java.util.ArrayList;
+import java.util.List;
+
 public class SwipeConfig {
 
-    public enum Direction { UP, DOWN, LEFT, RIGHT }
+    // ====== Intent extras ======
+    public static final String EXTRA_MODE        = "extra_mode";
+    public static final String EXTRA_DIR         = "extra_dir";
+    public static final String EXTRA_DIST_PCT    = "extra_dist_pct";
+    public static final String EXTRA_DUR_MS      = "extra_dur_ms";
+    public static final String EXTRA_INTERVAL_S  = "extra_interval_s";
+    public static final String EXTRA_MID_PAUSE_MS  = "extra_mid_pause_ms";
+    public static final String EXTRA_MID_POS_PCT   = "extra_mid_pos_pct";
+    public static final String EXTRA_OFFSET_PCT    = "extra_offset_pct";
+    public static final String EXTRA_CLICK_JSON    = "extra_click_json";
 
-    public Direction direction = Direction.UP;
-    public int distancePct = 60;           // 滑动距离占屏幕比例 0-100
-    public int swipeDurationMs = 500;      // 单次滑动总时长（不含停顿）
-    public int midPauseMs = 0;             // 滑动中途停顿时长
-    public int midPauseAtPct = 50;         // 中途停顿位置百分比
-    public int startOffsetPct = 50;        // 起点偏移百分比
-    public int intervalMs = 30000;         // 每次滑动之间的等待（间隔30s默认）
+    public enum Direction { UP, DOWN, LEFT, RIGHT }
+    public enum Mode      { SWIPE, CLICK }
+
+    public static class ClickPoint {
+        public int xPct = 50;       // 0-100
+        public int yPct = 50;       // 0-100
+        public int delaySec = 10;   // 点击后等待秒数（0-600）
+
+        public ClickPoint() {}
+        public ClickPoint(int xPct, int yPct, int delaySec) {
+            this.xPct = xPct; this.yPct = yPct; this.delaySec = delaySec;
+        }
+
+        JSONObject toJson() throws JSONException {
+            JSONObject o = new JSONObject();
+            o.put("x", xPct).put("y", yPct).put("ds", delaySec);
+            return o;
+        }
+        static ClickPoint fromJson(JSONObject o) throws JSONException {
+            ClickPoint p = new ClickPoint();
+            p.xPct = o.optInt("x", 50);
+            p.yPct = o.optInt("y", 50);
+            if (o.has("ds")) {
+                p.delaySec = o.getInt("ds");
+            } else if (o.has("d")) {
+                // 兼容老字段：如果 d>=1000 视为毫秒，否则秒
+                int raw = o.getInt("d");
+                p.delaySec = raw >= 1000 ? (raw / 1000) : raw;
+            }
+            return p;
+        }
+
+        public static String listToJson(List<ClickPoint> list) {
+            if (list == null) return "[]";
+            JSONArray a = new JSONArray();
+            try {
+                for (ClickPoint p : list) a.put(p.toJson());
+            } catch (JSONException ignored) {}
+            return a.toString();
+        }
+        public static List<ClickPoint> listFromJson(String json) {
+            List<ClickPoint> out = new ArrayList<>();
+            if (json == null || json.isEmpty()) return out;
+            try {
+                JSONArray a = new JSONArray(json);
+                for (int i = 0; i < a.length(); i++) {
+                    out.add(fromJson(a.getJSONObject(i)));
+                }
+            } catch (JSONException ignored) {}
+            return out;
+        }
+    }
+
+    public Mode mode = Mode.SWIPE;
+
+    // ---- Swipe params ----
+    public Direction direction = Direction.DOWN;
+    public int distancePct = 60;
+    public int durationMs = 500;          // 原 swipeDurationMs
+    public int midPauseMs = 0;
+    public int midPausePosPct = 50;       // 原 midPauseAtPct
+    public int startOffsetPct = 50;
+
+    // ---- Click params ----
+    public List<ClickPoint> clickPoints = new ArrayList<>();
+
+    // ---- Common ----
+    // intervalSec 为 source of truth（秒 1-600）；intervalMs 自动计算，兼容老 pref
+    public int intervalSec = 30;
+
+    public int getIntervalMs() { return Math.max(1000, intervalSec * 1000); }
 
     private static final String PREF = "swipe_config";
 
     public static SwipeConfig load(Context ctx) {
         SharedPreferences sp = ctx.getSharedPreferences(PREF, Context.MODE_PRIVATE);
         SwipeConfig c = new SwipeConfig();
-        c.direction = Direction.valueOf(sp.getString("dir", Direction.UP.name()));
+        c.clickPoints.clear();
+        try {
+            c.mode = Mode.valueOf(sp.getString("mode", Mode.SWIPE.name()));
+        } catch (Exception e) { c.mode = Mode.SWIPE; }
+        try { c.direction = Direction.valueOf(sp.getString("dir", Direction.DOWN.name())); }
+        catch (Exception ignored) {}
         c.distancePct = sp.getInt("distancePct", 60);
-        c.swipeDurationMs = sp.getInt("swipeDur", 500);
+        c.durationMs = sp.getInt("swipeDur", 500);
         c.midPauseMs = sp.getInt("midPause", 0);
-        c.midPauseAtPct = sp.getInt("midPauseAt", 50);
+        c.midPausePosPct = sp.getInt("midPauseAt", 50);
         c.startOffsetPct = sp.getInt("offset", 50);
-        c.intervalMs = sp.getInt("interval", 30000);
+
+        int intervalMs = sp.getInt("interval", 30000);
+        c.intervalSec = Math.max(1, Math.min(600, intervalMs / 1000));
+
+        String pts = sp.getString("clickPoints", null);
+        if (pts != null) {
+            c.clickPoints.addAll(ClickPoint.listFromJson(pts));
+        }
+        if (c.clickPoints.isEmpty()) {
+            c.clickPoints.add(new ClickPoint(50, 40, 10));
+            c.clickPoints.add(new ClickPoint(50, 60, 20));
+        }
         return c;
     }
 
     public void save(Context ctx) {
-        ctx.getSharedPreferences(PREF, Context.MODE_PRIVATE).edit()
-                .putString("dir", direction.name())
-                .putInt("distancePct", distancePct)
-                .putInt("swipeDur", swipeDurationMs)
-                .putInt("midPause", midPauseMs)
-                .putInt("midPauseAt", midPauseAtPct)
-                .putInt("offset", startOffsetPct)
-                .putInt("interval", intervalMs)
-                .apply();
+        intervalSec = Math.max(1, Math.min(600, intervalSec));
+        SharedPreferences.Editor ed = ctx.getSharedPreferences(PREF, Context.MODE_PRIVATE).edit();
+        ed.putString("mode", mode.name());
+        ed.putString("dir", direction.name());
+        ed.putInt("distancePct", distancePct);
+        ed.putInt("swipeDur", durationMs);
+        ed.putInt("midPause", midPauseMs);
+        ed.putInt("midPauseAt", midPausePosPct);
+        ed.putInt("offset", startOffsetPct);
+        ed.putInt("interval", getIntervalMs());
+        ed.putString("clickPoints", ClickPoint.listToJson(clickPoints));
+        ed.apply();
     }
 }

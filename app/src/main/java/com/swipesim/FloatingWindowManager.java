@@ -18,6 +18,11 @@ import android.widget.TextView;
 
 import androidx.localbroadcastmanager.content.LocalBroadcastManager;
 
+import com.swipesim.SwipeConfig.Mode;
+import com.swipesim.SwipeConfig.ClickPoint;
+
+import java.util.List;
+
 public class FloatingWindowManager {
 
     private final Context ctx;
@@ -28,15 +33,19 @@ public class FloatingWindowManager {
 
     private ImageView handleView;
     private Button btnStart;
-    private TextView tvStatus;
-    private TextView tvCount;
-    private View panel;
-    private View btnClose;
+    private TextView tvStatus, tvCount, tvParams;
+    private View panel, btnClose;
 
     private boolean dragging = false;
     private int downRawX, downRawY;
     private int startX, startY;
     private long downAt;
+
+    private boolean tempHidden = false;
+    private Mode mode = Mode.SWIPE;
+    private String dirArrow = "↓";
+    private int intervalSec = 30;
+    private int clickPointCount = 0;
 
     private final BroadcastReceiver receiver = new BroadcastReceiver() {
         @Override public void onReceive(Context context, Intent intent) {
@@ -72,21 +81,24 @@ public class FloatingWindowManager {
         if (shown) return;
         rootView = LayoutInflater.from(ctx).inflate(R.layout.floating_widget, null);
         handleView = rootView.findViewById(R.id.handle);
-        btnStart  = rootView.findViewById(R.id.btn_start);
-        tvStatus  = rootView.findViewById(R.id.tv_status);
-        tvCount   = rootView.findViewById(R.id.tv_count);
-        panel     = rootView.findViewById(R.id.panel);
-        btnClose  = rootView.findViewById(R.id.btn_close);
+        btnStart   = rootView.findViewById(R.id.btn_start);
+        tvStatus   = rootView.findViewById(R.id.tv_status);
+        tvCount    = rootView.findViewById(R.id.tv_count);
+        tvParams   = rootView.findViewById(R.id.tv_params);
+        panel      = rootView.findViewById(R.id.panel);
+        btnClose   = rootView.findViewById(R.id.btn_close);
 
         setupDrag();
         setupClicks();
 
         wm.addView(rootView, params);
         shown = true;
+        tempHidden = false;
 
         IntentFilter f = new IntentFilter(SwipeAccessibilityService.ACTION_STATUS_ANS);
         LocalBroadcastManager.getInstance(ctx).registerReceiver(receiver, f);
         requestStatus();
+        refreshParamsText();
         updateStatus(false, 0, "idle");
     }
 
@@ -94,9 +106,71 @@ public class FloatingWindowManager {
         if (!shown || rootView == null) return;
         try {
             LocalBroadcastManager.getInstance(ctx).unregisterReceiver(receiver);
-            wm.removeView(rootView);
+            wm.removeViewImmediate(rootView);
         } catch (Exception ignored) {}
         shown = false;
+        tempHidden = false;
+    }
+
+    public void hideTemp() {
+        if (!shown || tempHidden || rootView == null) return;
+        try { wm.removeViewImmediate(rootView); } catch (Exception ignored) {}
+        tempHidden = true;
+    }
+
+    public void restoreTemp() {
+        if (!tempHidden || rootView == null) return;
+        try { wm.addView(rootView, params); } catch (Exception ignored) {}
+        tempHidden = false;
+        refreshParamsText();
+    }
+
+    public void refreshFromIntent(Intent i) {
+        if (i == null) return;
+        String m = i.getStringExtra(SwipeConfig.EXTRA_MODE);
+        if (m != null) {
+            try { mode = Mode.valueOf(m); } catch (Exception ignored) {}
+        }
+        String d = i.getStringExtra(SwipeConfig.EXTRA_DIR);
+        if (d != null) {
+            try {
+                SwipeConfig.Direction dir = SwipeConfig.Direction.valueOf(d);
+                switch (dir) {
+                    case UP:    dirArrow = "↑"; break;
+                    case DOWN:  dirArrow = "↓"; break;
+                    case LEFT:  dirArrow = "←"; break;
+                    case RIGHT: dirArrow = "→"; break;
+                }
+            } catch (Exception ignored) {}
+        }
+        if (i.hasExtra(SwipeConfig.EXTRA_INTERVAL_S)) {
+            intervalSec = i.getIntExtra(SwipeConfig.EXTRA_INTERVAL_S, intervalSec);
+        }
+        String json = i.getStringExtra(SwipeConfig.EXTRA_CLICK_JSON);
+        if (json != null) {
+            List<ClickPoint> list = ClickPoint.listFromJson(json);
+            clickPointCount = list == null ? 0 : list.size();
+        }
+        refreshParamsText();
+        updateBtnStart();
+    }
+
+    private void refreshParamsText() {
+        if (tvParams == null) return;
+        if (mode == Mode.SWIPE) {
+            tvParams.setText("模式：滑动 · " + dirArrow + " · 间隔 " + intervalSec + "s");
+        } else {
+            tvParams.setText("模式：多点点击 · " + clickPointCount + " 个点\n一轮间隔 " + intervalSec + "s");
+        }
+    }
+
+    private void updateBtnStart() {
+        if (btnStart == null || btnStart.isSelected()) return; // running 中保持「停止」
+        if (mode == Mode.SWIPE) {
+            btnStart.setText("▶ 开始滑动");
+        } else {
+            btnStart.setText("▶ 开始点击");
+        }
     }
 
     private void requestStatus() {
@@ -109,7 +183,6 @@ public class FloatingWindowManager {
             @Override public void onClick(View v) {
                 SwipeAccessibilityService svc = SwipeAccessibilityService.get();
                 if (svc != null) {
-                    // 用广播更稳（service绑定场景兼容）
                     String act = btnStart.isSelected()
                             ? SwipeAccessibilityService.ACTION_STOP
                             : SwipeAccessibilityService.ACTION_START;
@@ -143,7 +216,7 @@ public class FloatingWindowManager {
                         downRawY = (int) e.getRawY();
                         startX = params.x;
                         startY = params.y;
-                        return false; // 不消费，让 click 能触发
+                        return false;
                     case MotionEvent.ACTION_MOVE:
                         int dx = (int) e.getRawX() - downRawX;
                         int dy = (int) e.getRawY() - downRawY;
@@ -168,21 +241,30 @@ public class FloatingWindowManager {
     }
 
     private void safeUpdate() {
-        try { wm.updateViewLayout(rootView, params); } catch (Exception ignored) {}
+        try { if (rootView != null) wm.updateViewLayout(rootView, params); } catch (Exception ignored) {}
     }
 
     private void updateStatus(boolean running, int count, String state) {
         if (btnStart == null) return;
         btnStart.setSelected(running);
-        btnStart.setText(running ? "■ 停止" : "▶ 开始滑动");
-        btnStart.setBackgroundResource(running ? R.drawable.bg_btn_stop : R.drawable.bg_btn_primary);
+        if (running) {
+            btnStart.setText("■ 停止");
+            btnStart.setBackgroundResource(R.drawable.bg_btn_stop);
+        } else {
+            updateBtnStart();
+            btnStart.setBackgroundResource(R.drawable.bg_btn_primary);
+        }
         tvCount.setText("次数: " + count);
         String txt;
-        switch (state == null ? "idle" : state) {
-            case "swiping":      txt = "滑动中…"; break;
-            case "pausing_mid":  txt = "中途停顿…"; break;
-            case "waiting_next": txt = "等待下一次…"; break;
-            default:             txt = running ? "运行中" : "就绪";
+        String s = state == null ? "idle" : state;
+        switch (s) {
+            case "swiping":          txt = "滑动中…"; break;
+            case "pausing_mid":      txt = "中途停顿…"; break;
+            case "clicking":         txt = "点击中…"; break;
+            case "waiting_point":    txt = "等待下一个点…"; break;
+            case "waiting_cycle":    txt = "等待下一轮…"; break;
+            case "waiting_next":     txt = (mode == Mode.CLICK) ? "等待下一轮…" : "等待下一次…"; break;
+            default:                 txt = running ? "运行中" : "就绪";
         }
         tvStatus.setText(txt);
     }
