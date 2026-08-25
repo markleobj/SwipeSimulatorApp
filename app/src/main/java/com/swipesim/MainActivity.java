@@ -128,7 +128,7 @@ public class MainActivity extends AppCompatActivity {
     private static class PointRowHolder {
         final View root;
         final int index;
-        final TextView name, btnCapture, btnRemove;
+        final TextView name, btnCapture, btnRemove, xLabel, yLabel;
         final EditText xVal, yVal, delayVal;
         final SeekBar xSb, ySb, delaySb;
 
@@ -136,6 +136,8 @@ public class MainActivity extends AppCompatActivity {
             this.root = root;
             this.index = index;
             name = root.findViewById(R.id.pt_name);
+            xLabel = root.findViewById(R.id.pt_x_label);
+            yLabel = root.findViewById(R.id.pt_y_label);
             xVal = root.findViewById(R.id.pt_x_val);
             yVal = root.findViewById(R.id.pt_y_val);
             delayVal = root.findViewById(R.id.pt_delay_val);
@@ -249,18 +251,41 @@ public class MainActivity extends AppCompatActivity {
                 toastShort("最多 8 个点击点");
                 return;
             }
-            if (cfg.clickPoints.isEmpty()) {
-                addClickPoint(25, 50, 10);
-                addClickPoint(75, 50, 10);
-            } else {
-                ClickPoint last = cfg.clickPoints.get(cfg.clickPoints.size() - 1);
-                int nx = (last.xPct + 20) % 100;
-                int ny = (last.yPct + 15) % 100;
-                if (nx < 5) nx = 50;
-                if (ny < 5) ny = 50;
-                addClickPoint(nx, ny, Math.max(0, Math.min(600, last.delaySec)));
+            if (!Settings.canDrawOverlays(MainActivity.this)) {
+                toastShort("请先授予悬浮窗权限");
+                requestOverlayPermission();
+                return;
             }
+            // 不塞默认(30%,50%)(40%,50%)假坐标 → 直接让用户在屏幕上戳一下，把真实坐标写入A/B/C/D点
+            final int newIdx = cfg.clickPoints.size();
+            final String letter = pointLetter(newIdx);
             saveCfg();
+            Intent fi = new Intent(MainActivity.this, FloatingService.class);
+            fi.setAction(FloatingService.ACTION_HIDE_TEMP);
+            safeStartFgService(fi);
+            CaptureOverlayManager.show(MainActivity.this,
+                    newIdx,
+                    letter,
+                    new CaptureOverlayManager.Callback() {
+                        @Override public void onSaved(int xPct, int yPct) {
+                            try {
+                                Intent ri = new Intent(MainActivity.this, FloatingService.class);
+                                ri.setAction(FloatingService.ACTION_RESTORE_TEMP);
+                                putCfgIntent(ri);
+                                safeStartFgService(ri);
+                            } catch (Throwable ignored) {}
+                            try {
+                                int delaySec = 10;
+                                if (!cfg.clickPoints.isEmpty()) {
+                                    ClickPoint last = cfg.clickPoints.get(cfg.clickPoints.size() - 1);
+                                    delaySec = Math.max(0, Math.min(600, last.delaySec));
+                                }
+                                addClickPoint(xPct, yPct, delaySec);
+                                saveCfg();
+                                toastShort(letter + " 点已添加 X=" + xPct + "% Y=" + yPct + "%");
+                            } catch (Throwable t) { toastShort("添加点失败：" + safeMsg(t)); }
+                        }
+                    });
         }, "添加点"));
 
         // ===== 方案按钮 =====
@@ -850,6 +875,12 @@ public class MainActivity extends AppCompatActivity {
                         }
                     });
         }, "采点"));
+
+        // 额外入口：点 A/B/C 点名称、X 坐标标签、Y 坐标标签 → 直接采点（不用再找「🎯 采点」按钮）
+        View.OnClickListener captureTrigger = wrap(v -> h.btnCapture.performClick(), "采点");
+        h.name.setOnClickListener(captureTrigger);
+        if (h.xLabel != null) h.xLabel.setOnClickListener(captureTrigger);
+        if (h.yLabel != null) h.yLabel.setOnClickListener(captureTrigger);
         h.btnRemove.setOnClickListener(wrap(v -> {
             if (cfg.clickPoints.size() <= 1) {
                 toastShort("至少保留 1 个点");

@@ -59,10 +59,11 @@
         android:gravity="center_vertical"
         android:layout_marginBottom="2dp">
         <TextView
+            android:id="@+id/pt_x_label"
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_weight="1"
-            android:text="X 坐标"
+            android:text="X 坐标（点我直接采）"
             android:textColor="@color/text2"
             android:textSize="12sp"/>
         <LinearLayout
@@ -111,10 +112,11 @@
         android:gravity="center_vertical"
         android:layout_marginBottom="2dp">
         <TextView
+            android:id="@+id/pt_y_label"
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_weight="1"
-            android:text="Y 坐标"
+            android:text="Y 坐标（点我直接采）"
             android:textColor="@color/text2"
             android:textSize="12sp"/>
         <LinearLayout

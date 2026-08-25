@@ -491,20 +491,13 @@ public class FloatingWindowManager {
         btnAddPoint.setOnClickListener(new View.OnClickListener() {
             @Override public void onClick(View v) {
                 if (cfg.clickPoints == null) cfg.clickPoints = new ArrayList<>();
-                int baseX = 50, baseY = 50, delay = 10;
-                if (!cfg.clickPoints.isEmpty()) {
-                    ClickPoint last = cfg.clickPoints.get(cfg.clickPoints.size() - 1);
-                    baseX = (last.xPct + 20) % 100;
-                    if (baseX < 5) baseX = 50;
-                    baseY = (last.yPct + 15) % 100;
-                    if (baseY < 5) baseY = 50;
-                    delay = Math.max(0, Math.min(600, last.delaySec));
+                if (cfg.clickPoints.size() >= 8) {
+                    toastShort("最多 8 个点击点");
+                    return;
                 }
-                cfg.clickPoints.add(new ClickPoint(baseX, baseY, delay));
-                persistCfg();
-                renderPointsList();
-                refreshParamsText();
-                toastShort("已添加点 " + letterFromIdx(cfg.clickPoints.size() - 1));
+                // 不添加默认坐标点 → 直接进入全屏采点，让用户自己戳屏幕定位 A/B/C/D...
+                int newIdx = cfg.clickPoints.size();
+                startPickPoint(newIdx, letterFromIdx(newIdx));
             }
         });
     }
@@ -566,7 +559,22 @@ public class FloatingWindowManager {
 
     // ============== 采点流程 ==============
     private void startPickPoint(final int idx, final String letter) {
-        if (idx < 0) return;
+        if (idx < 0 || idx > cfg.clickPoints.size()) return;
+        final boolean isNew = (idx == cfg.clickPoints.size());
+        // 新增点：先 append 一个占位，然后全屏去采
+        if (isNew) {
+            if (cfg.clickPoints.size() >= 8) {
+                toastShort("最多 8 个点击点");
+                return;
+            }
+            int delaySec = 10;
+            if (!cfg.clickPoints.isEmpty()) {
+                delaySec = Math.max(0, Math.min(600, cfg.clickPoints.get(cfg.clickPoints.size() - 1).delaySec));
+            }
+            cfg.clickPoints.add(new ClickPoint(50, 50, delaySec));
+            persistCfg();
+            renderPointsList();
+        }
         // 临时隐藏悬浮窗 → 打开 CaptureOverlayManager → 采完恢复
         hideTemp();
         CaptureOverlayManager.show(ctx, idx, letter, new CaptureOverlayManager.Callback() {
@@ -580,7 +588,7 @@ public class FloatingWindowManager {
                         renderPointsList();
                         refreshParamsText();
                     }
-                    toastShort(letter + " 点已更新: X=" + xPct + "% Y=" + yPct + "%");
+                    toastShort(letter + " 点已" + (isNew ? "添加" : "更新") + ": X=" + xPct + "% Y=" + yPct + "%");
                 } catch (Throwable t) { toastShort("保存采点失败: " + safeMsg(t)); }            }
         });
     }
