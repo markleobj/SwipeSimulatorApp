@@ -16,11 +16,11 @@
         android:scaleType="centerInside"
         android:contentDescription="悬浮球"/>
 
-    <!-- 控制面板（默认隐藏，点击圆形小球后才展开） -->
+    <!-- 控制面板（默认隐藏，点击圆形小球后才展开）：滑动/点击两个模式固定尺寸，不忽大忽小 -->
     <LinearLayout
         android:id="@+id/panel"
         android:layout_width="264dp"
-        android:layout_height="wrap_content"
+        android:layout_height="480dp"
         android:orientation="vertical"
         android:background="@drawable/bg_floating"
         android:padding="10dp"
@@ -85,11 +85,12 @@
                 android:background="@drawable/bg_dir_normal"/>
         </LinearLayout>
 
-        <!-- ========== 滑动模式专属 ========== -->
+        <!-- ========== 滑动模式专属 ========== 固定高度：撑满中间剩余空间 -->
         <LinearLayout
             android:id="@+id/swipe_panel"
             android:layout_width="match_parent"
-            android:layout_height="wrap_content"
+            android:layout_height="0dp"
+            android:layout_weight="1"
             android:orientation="vertical">
 
             <!-- 方向按钮 -->
@@ -126,11 +127,12 @@
             <include layout="@layout/_row_edit" android:id="@+id/row_midpause"/>
         </LinearLayout>
 
-        <!-- ========== 点击模式专属 ========== -->
+        <!-- ========== 点击模式专属 ========== 固定高度：撑满中间剩余空间，超出滚动 -->
         <LinearLayout
             android:id="@+id/click_panel"
             android:layout_width="match_parent"
-            android:layout_height="wrap_content"
+            android:layout_height="0dp"
+            android:layout_weight="1"
             android:orientation="vertical"
             android:visibility="gone">
 
@@ -184,11 +186,11 @@
                     android:text="+ 加点"/>
             </LinearLayout>
 
-            <!-- 点位列表容器：动态 addView -->
+            <!-- 点位列表容器：动态 addView，撑满 click_panel 剩余空间（超出滚动） -->
             <ScrollView
                 android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:maxHeight="220dp"
+                android:layout_height="0dp"
+                android:layout_weight="1"
                 android:layout_marginBottom="4dp">
                 <LinearLayout
                     android:id="@+id/points_container"
