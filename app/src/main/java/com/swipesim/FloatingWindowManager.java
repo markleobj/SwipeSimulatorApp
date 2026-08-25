@@ -50,8 +50,8 @@ public class FloatingWindowManager {
     private View swipePanel, clickPanel;
     private TextView[] dirBtns; // up, down, left, right
     // 滑动模式 4 行输入
-    private ViewGroup rowDistance, rowIntervalSwipe, rowDuration, rowMidPause;
-    private EditText etDistance, etIntervalSwipe, etDuration, etMidPause;
+    private ViewGroup rowDistance, rowIntervalSwipe, rowDuration, rowMidPause, rowMidPos, rowOffset;
+    private EditText etDistance, etIntervalSwipe, etDuration, etMidPause, etMidPos, etOffset;
     // 点击模式
     private EditText etIntervalClick;
     private TextView btnAddPoint;
@@ -67,6 +67,10 @@ public class FloatingWindowManager {
     private long downAt;
 
     private boolean tempHidden = false;
+
+    // 保存展开 panel 前小球的位置，收起时恢复
+    private int savedHandleX = -1;
+    private int savedHandleY = -1;
 
     // 自定义长按检测（避免和拖动冲突）
     private static final long LONG_PRESS_DELAY_MS = 1500L; // 1.5秒，比系统默认长，减少误触
@@ -143,14 +147,20 @@ public class FloatingWindowManager {
             rowIntervalSwipe  = rootView.findViewById(R.id.row_interval_swipe);
             rowDuration       = rootView.findViewById(R.id.row_duration);
             rowMidPause       = rootView.findViewById(R.id.row_midpause);
+            rowMidPos         = rootView.findViewById(R.id.row_mid_pos);
+            rowOffset         = rootView.findViewById(R.id.row_offset);
             etDistance       = rowDistance.findViewById(R.id.row_value);
             etIntervalSwipe  = rowIntervalSwipe.findViewById(R.id.row_value);
             etDuration       = rowDuration.findViewById(R.id.row_value);
             etMidPause       = rowMidPause.findViewById(R.id.row_value);
+            etMidPos         = rowMidPos.findViewById(R.id.row_value);
+            etOffset         = rowOffset.findViewById(R.id.row_value);
             setRowLabel(rowDistance, "滑动距离", "%");
             setRowLabel(rowIntervalSwipe, "每轮间隔", "秒");
             setRowLabel(rowDuration, "滑动时长", "ms");
             setRowLabel(rowMidPause, "中点停顿", "ms");
+            setRowLabel(rowMidPos, "停顿位置", "%");
+            setRowLabel(rowOffset, "起点偏移", "%");
 
             // 点击模式
             etIntervalClick  = rootView.findViewById(R.id.et_interval_click);
@@ -269,6 +279,8 @@ public class FloatingWindowManager {
             etIntervalSwipe.setText(String.valueOf(Math.max(1, Math.min(600, cfg.intervalSec))));
             etDuration.setText(String.valueOf(Math.max(50, cfg.durationMs)));
             etMidPause.setText(String.valueOf(Math.max(0, cfg.midPauseMs)));
+            etMidPos.setText(String.valueOf(Math.max(0, Math.min(100, cfg.midPausePosPct))));
+            etOffset.setText(String.valueOf(Math.max(0, Math.min(100, cfg.startOffsetPct))));
 
             // Click rows
             etIntervalClick.setText(String.valueOf(Math.max(1, Math.min(600, cfg.intervalSec))));
@@ -481,6 +493,12 @@ public class FloatingWindowManager {
         attachNumWatcher(etMidPause, new NumApply() {
             @Override public void apply(int v) { cfg.midPauseMs = Math.max(0, v); persistCfg(); }
         });
+        attachNumWatcher(etMidPos, new NumApply() {
+            @Override public void apply(int v) { cfg.midPausePosPct = Math.max(0, Math.min(100, v)); persistCfg(); }
+        });
+        attachNumWatcher(etOffset, new NumApply() {
+            @Override public void apply(int v) { cfg.startOffsetPct = Math.max(0, Math.min(100, v)); persistCfg(); }
+        });
         attachNumWatcher(etIntervalSwipe, new NumApply() {
             @Override public void apply(int v) { cfg.intervalSec = Math.max(1, Math.min(600, v)); persistCfg(); syncBothInterval(); }
         });
@@ -626,16 +644,14 @@ public class FloatingWindowManager {
                         ? SwipeAccessibilityService.ACTION_STOP
                         : SwipeAccessibilityService.ACTION_START;
                 LocalBroadcastManager.getInstance(ctx).sendBroadcast(new Intent(act));
-                // 开始/停止后收起面板，释放焦点（运行时悬浮窗不要抢键盘焦点）
-                if (panel != null) panel.setVisibility(View.GONE);
-                releaseFocus();
+                // 开始/停止后收起面板，恢复小球位置，释放焦点
+                collapsePanelAndRestore();
             }
         });
         btnClose.setOnClickListener(new View.OnClickListener() {
             @Override public void onClick(View v) {
-                // 点 ✕ 收起透明大面板 → 释放焦点（不再弹键盘），只留下圆形小球
-                releaseFocus();
-                if (panel != null) panel.setVisibility(View.GONE);
+                // 点 ✕ 收起透明大面板 → 恢复小球位置 + 释放焦点
+                collapsePanelAndRestore();
             }
         });
         handleView.setOnClickListener(new View.OnClickListener() {
@@ -643,11 +659,9 @@ public class FloatingWindowManager {
                 // 点击圆形小球 → 展开/收起透明大面板
                 if (panel == null) return;
                 if (panel.getVisibility() == View.VISIBLE) {
-                    releaseFocus();
-                    panel.setVisibility(View.GONE);
+                    collapsePanelAndRestore();
                 } else {
-                    panel.setVisibility(View.VISIBLE);
-                    acquireFocus(); // 展开后立刻获取焦点，为点 EditText 弹键盘做准备
+                    expandPanelAndCenter();
                 }
             }
         });
@@ -699,6 +713,66 @@ public class FloatingWindowManager {
 
     private void safeUpdate() {
         try { if (rootView != null) wm.updateViewLayout(rootView, params); } catch (Exception ignored) {}
+    }
+
+    // 展开透明面板，同时整个窗口移动到「panel 居中」的位置；保存小球原位置以便收起时恢复
+    private void expandPanelAndCenter() {
+        if (rootView == null || panel == null) return;
+        // 1) 先保存当前小球位置（仅第一次展开时保存，避免连续展开覆盖）
+        if (savedHandleX == -1) { savedHandleX = params.x; savedHandleY = params.y; }
+        // 2) 显示面板 + 获取焦点
+        panel.setVisibility(View.VISIBLE);
+        acquireFocus();
+        // 3) 测量展开后的 rootView，计算 panel 居中的窗口位置
+        rootView.post(new Runnable() {
+            @Override public void run() {
+                try {
+                    android.util.DisplayMetrics dm = ctx.getResources().getDisplayMetrics();
+                    int rootW = rootView.getWidth();
+                    int rootH = rootView.getHeight();
+                    if (rootW <= 0 || rootH <= 0) {
+                        rootView.measure(View.MeasureSpec.UNSPECIFIED, View.MeasureSpec.UNSPECIFIED);
+                        rootW = rootView.getMeasuredWidth();
+                        rootH = rootView.getMeasuredHeight();
+                    }
+                    // handle 在 panel 上方，两者都是 rootView 的子 View
+                    // panel 顶部在 rootView 中的 y 偏移 = handle 高度 + panel 的 marginTop(6dp)
+                    int handleH = handleView == null ? 0 : handleView.getHeight();
+                    if (handleH <= 0) handleH = dp2(56);
+                    int panelTopInRoot = handleH + dp2(6); // 6dp marginTop
+                    int panelH = panel.getHeight();
+                    if (panelH <= 0) panelH = dp2(480);
+                    int panelW = panel.getWidth();
+                    if (panelW <= 0) panelW = dp2(264);
+                    // panel 自身的 left 在 rootView 中的 x 偏移：panel 在 LinearLayout 中居中/撑满
+                    // 直接用「让 panel 左上角相对屏幕居中」反推 rootView 左上角坐标
+                    // panelLeftOnScreen = (dm.widthPixels  - panelW) / 2
+                    // panelTopOnScreen  = (dm.heightPixels - panelH) / 2
+                    // rootView.x = panelLeftOnScreen - panelLeftInRoot
+                    // rootView.y = panelTopOnScreen  - panelTopInRoot
+                    int panelLeftInRoot = Math.max(0, (rootW - panelW) / 2);
+                    int targetX = Math.max(0, (dm.widthPixels  - panelW) / 2 - panelLeftInRoot);
+                    int targetY = Math.max(0, (dm.heightPixels - panelH) / 2 - panelTopInRoot);
+                    params.x = targetX;
+                    params.y = targetY;
+                    safeUpdate();
+                } catch (Throwable ignored) {}
+            }
+        });
+    }
+
+    // 收起透明面板，恢复小球保存的位置
+    private void collapsePanelAndRestore() {
+        releaseFocus();
+        if (panel != null) panel.setVisibility(View.GONE);
+        // 恢复小球位置（仅在保存过有效值时）
+        if (savedHandleX != -1) {
+            params.x = savedHandleX;
+            params.y = savedHandleY;
+            savedHandleX = -1;
+            savedHandleY = -1;
+            safeUpdate();
+        }
     }
 
     // 移除 FLAG_NOT_FOCUSABLE，让悬浮窗能获得焦点（EditText 才能弹软键盘）
@@ -765,7 +839,8 @@ public class FloatingWindowManager {
                     .append(" · D=").append(cfg.distancePct).append("%")
                     .append(" · T=").append(cfg.intervalSec).append("s")
                     .append("\n时长=").append(cfg.durationMs).append("ms");
-            if (cfg.midPauseMs > 0) sb.append(" · 中停=").append(cfg.midPauseMs).append("ms");
+            if (cfg.midPauseMs > 0) sb.append(" · 中停=").append(cfg.midPauseMs).append("ms").append("@").append(cfg.midPausePosPct).append("%");
+            if (cfg.startOffsetPct != 50) sb.append(" · 起点=").append(cfg.startOffsetPct).append("%");
         } else {
             int n = cfg.clickPoints == null ? 0 : cfg.clickPoints.size();
             sb.append("点击 · ").append(n).append("点 · 一轮=").append(cfg.intervalSec).append("s");

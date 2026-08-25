@@ -125,6 +125,8 @@
             <include layout="@layout/_row_edit" android:id="@+id/row_interval_swipe"/>
             <include layout="@layout/_row_edit" android:id="@+id/row_duration"/>
             <include layout="@layout/_row_edit" android:id="@+id/row_midpause"/>
+            <include layout="@layout/_row_edit" android:id="@+id/row_mid_pos"/>
+            <include layout="@layout/_row_edit" android:id="@+id/row_offset"/>
         </LinearLayout>
 
         <!-- ========== 点击模式专属 ========== 固定高度：撑满中间剩余空间，超出滚动 -->
