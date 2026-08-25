@@ -15,6 +15,7 @@ import android.view.MotionEvent;
 import android.view.View;
 import android.view.ViewGroup;
 import android.view.WindowManager;
+import android.view.inputmethod.InputMethodManager;
 import android.widget.Button;
 import android.widget.EditText;
 import android.widget.ImageView;
@@ -349,6 +350,12 @@ public class FloatingWindowManager {
                     }
                 }
             });
+            // 点位延时 EditText 获取焦点时弹软键盘
+            etDelay.setOnFocusChangeListener(new View.OnFocusChangeListener() {
+                @Override public void onFocusChange(View v, boolean hasFocus) {
+                    if (hasFocus) showKeyboardFor(etDelay);
+                }
+            });
 
             // 单位"秒"
             TextView tvSec = new TextView(ctx);
@@ -476,6 +483,12 @@ public class FloatingWindowManager {
                 try { refreshParamsText(); } catch (Throwable ignored) {}
             }
         });
+        // 获取焦点时主动弹软键盘
+        et.setOnFocusChangeListener(new View.OnFocusChangeListener() {
+            @Override public void onFocusChange(View v, boolean hasFocus) {
+                if (hasFocus) showKeyboardFor(et);
+            }
+        });
     }
 
     private static int parseIntSafe(String s, int def) {
@@ -566,19 +579,28 @@ public class FloatingWindowManager {
                         ? SwipeAccessibilityService.ACTION_STOP
                         : SwipeAccessibilityService.ACTION_START;
                 LocalBroadcastManager.getInstance(ctx).sendBroadcast(new Intent(act));
+                // 开始/停止后收起面板，释放焦点（运行时悬浮窗不要抢键盘焦点）
+                if (panel != null) panel.setVisibility(View.GONE);
+                releaseFocus();
             }
         });
         btnClose.setOnClickListener(new View.OnClickListener() {
             @Override public void onClick(View v) {
-                // 点 ✕ 只收起透明大面板，回到只显示圆形小球（不关闭悬浮窗服务）
+                // 点 ✕ 收起透明大面板 → 释放焦点（不再弹键盘），只留下圆形小球
+                releaseFocus();
                 if (panel != null) panel.setVisibility(View.GONE);
             }
         });
         handleView.setOnClickListener(new View.OnClickListener() {
             @Override public void onClick(View v) {
                 // 点击圆形小球 → 展开/收起透明大面板
-                if (panel != null) {
-                    panel.setVisibility(panel.getVisibility() == View.VISIBLE ? View.GONE : View.VISIBLE);
+                if (panel == null) return;
+                if (panel.getVisibility() == View.VISIBLE) {
+                    releaseFocus();
+                    panel.setVisibility(View.GONE);
+                } else {
+                    panel.setVisibility(View.VISIBLE);
+                    acquireFocus(); // 展开后立刻获取焦点，为点 EditText 弹键盘做准备
                 }
             }
         });
@@ -631,6 +653,47 @@ public class FloatingWindowManager {
 
     private void safeUpdate() {
         try { if (rootView != null) wm.updateViewLayout(rootView, params); } catch (Exception ignored) {}
+    }
+
+    // 移除 FLAG_NOT_FOCUSABLE，让悬浮窗能获得焦点（EditText 才能弹软键盘）
+    private void acquireFocus() {
+        try {
+            if ((params.flags & WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE) != 0) {
+                params.flags &= ~WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE;
+                safeUpdate();
+            }
+        } catch (Throwable ignored) {}
+    }
+
+    // 加回 FLAG_NOT_FOCUSABLE，悬浮窗不再抢下面 APP 的焦点；同时隐藏软键盘
+    private void releaseFocus() {
+        try {
+            if ((params.flags & WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE) == 0) {
+                params.flags |= WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE;
+                safeUpdate();
+            }
+        } catch (Throwable ignored) {}
+        try {
+            InputMethodManager imm = (InputMethodManager) ctx.getSystemService(Context.INPUT_METHOD_SERVICE);
+            if (imm != null && rootView != null) {
+                imm.hideSoftInputFromWindow(rootView.getWindowToken(), 0);
+            }
+        } catch (Throwable ignored) {}
+    }
+
+    // 主动为某个 EditText 弹出软键盘（acquireFocus 之后再调用）
+    private void showKeyboardFor(View v) {
+        if (v == null) return;
+        try {
+            acquireFocus();
+            v.requestFocus();
+            InputMethodManager imm = (InputMethodManager) ctx.getSystemService(Context.INPUT_METHOD_SERVICE);
+            if (imm != null) {
+                v.postDelayed(() -> {
+                    try { imm.showSoftInput(v, InputMethodManager.SHOW_IMPLICIT); } catch (Throwable ignored) {}
+                }, 80);
+            }
+        } catch (Throwable ignored) {}
     }
 
     private void requestStatus() {
