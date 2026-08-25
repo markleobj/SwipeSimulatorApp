@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">滑动模拟器</string>
+    <string name="accessibility_label">滑动模拟器</string>
+    <string name="accessibility_desc">允许「滑动模拟器」在其他应用界面上执行滑动手势，用于定时自动翻页、自动滑动视频等场景。该服务不会采集任何个人数据。</string>
+</resources>

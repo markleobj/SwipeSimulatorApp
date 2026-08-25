@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="DirBtn">
+        <item name="android:layout_width">0dp</item>
+        <item name="android:layout_height">48dp</item>
+        <item name="android:layout_weight">1</item>
+        <item name="android:gravity">center</item>
+        <item name="android:background">@drawable/selector_direction</item>
+        <item name="android:textColor">@color/text1</item>
+        <item name="android:textStyle">bold</item>
+        <item name="android:textSize">14sp</item>
+        <item name="android:clickable">true</item>
+        <item name="android:focusable">true</item>
+    </style>
+
+    <style name="ParamRow">
+        <item name="android:layout_width">match_parent</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:orientation">horizontal</item>
+        <item name="android:gravity">center_vertical</item>
+        <item name="android:layout_marginBottom">4dp</item>
+    </style>
+
+    <style name="ParamLabel">
+        <item name="android:layout_width">0dp</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:layout_weight">1</item>
+        <item name="android:textColor">@color/text1</item>
+        <item name="android:textSize">13sp</item>
+    </style>
+
+    <style name="ParamVal">
+        <item name="android:layout_width">wrap_content</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:textColor">@color/primary</item>
+        <item name="android:textStyle">bold</item>
+        <item name="android:textSize">13sp</item>
+        <item name="android:fontFamily">monospace</item>
+    </style>
+
+    <style name="ParamSeek" parent="Widget.AppCompat.SeekBar">
+        <item name="android:layout_width">match_parent</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:layout_marginBottom">10dp</item>
+        <item name="android:maxHeight">4dp</item>
+        <item name="android:minHeight">4dp</item>
+    </style>
+</resources>
