@@ -274,13 +274,18 @@ public class MainActivity extends AppCompatActivity {
         tvOverlayStatus.setOnClickListener(wrap(v -> requestOverlayPermission(), "打开悬浮窗权限"));
 
         btnShowFloat.setOnClickListener(wrap(v -> {
+            if (!Settings.canDrawOverlays(MainActivity.this)) {
+                // 只提示，不弹透明系统设置页；用户自己点顶部的「悬浮窗权限」去开
+                toastShort("请先在顶部开启「悬浮窗权限」再点这里");
+                updateOverlayStatus();
+                return;
+            }
             saveCfg();
             Intent i = new Intent(MainActivity.this, FloatingService.class);
             i.setAction(FloatingService.ACTION_SHOW);
             putCfgIntent(i);
             safeStartFgService(i);
-            askOverlayIfNeeded();
-            // 主界面退到后台（相当于按 Home 键），让悬浮窗显示在其他 APP 上
+            // 主界面退到后台（相当于按 Home 键），只留下悬浮窗小球
             try { moveTaskToBack(true); } catch (Throwable ignored) {}
         }, "显示悬浮窗"));
         btnHideFloat.setOnClickListener(wrap(v -> {
@@ -294,6 +299,12 @@ public class MainActivity extends AppCompatActivity {
                 openAccessibilitySettings();
                 return;
             }
+            if (!Settings.canDrawOverlays(MainActivity.this)) {
+                // 只提示，不弹透明系统设置页；用户自己点顶部的「悬浮窗权限」去开
+                toastShort("请先在顶部开启「悬浮窗权限」再点这里");
+                updateOverlayStatus();
+                return;
+            }
             if (cfg.mode == Mode.CLICK && cfg.clickPoints.isEmpty()) {
                 toastShort("请至少添加一个点击点");
                 return;
@@ -305,11 +316,10 @@ public class MainActivity extends AppCompatActivity {
             fi.setAction(FloatingService.ACTION_SHOW);
             putCfgIntent(fi);
             safeStartFgService(fi);
-            askOverlayIfNeeded();
             LocalBroadcastManager.getInstance(MainActivity.this)
                     .sendBroadcast(new Intent(SwipeAccessibilityService.ACTION_START));
             toastShort("已开始运行");
-            // 开始运行后主界面退到后台，用户去目标 APP 上操作
+            // 开始运行后主界面退到后台，只留下悬浮窗小球
             try { moveTaskToBack(true); } catch (Throwable ignored) {}
         }, "开始"));
         btnStop.setOnClickListener(wrap(v -> {
