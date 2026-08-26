@@ -59,7 +59,7 @@ public class App extends Application {
             try {
                 pw.append("  Android=").append(android.os.Build.VERSION.RELEASE).append(" (SDK=").append(String.valueOf(android.os.Build.VERSION.SDK_INT)).append(")\n");
                 pw.append("  厂商=").append(android.os.Build.MANUFACTURER).append(" / 型号=").append(android.os.Build.MODEL).append(" / 产品=").append(android.os.Build.PRODUCT).append("\n");
-                pw.append("  应用版本=v1.2.1 / versionCode=1\n");
+            pw.append("  应用版本=v").append(Util.versionName(this)).append(" / versionCode=").append(Util.versionCode(this)).append("\n");
             } catch (Throwable ignore) {}
             pw.append("\n【异常信息】\n");
             Throwable cause = e;

@@ -97,6 +97,14 @@ public class SwipeConfig {
 
     private static final String PREF = "swipe_config";
 
+    /** 统一的默认点击点（消除 load / fromJson 两处不一致的默认值） */
+    private static void ensureDefaultPoints(List<ClickPoint> list) {
+        if (list.isEmpty()) {
+            list.add(new ClickPoint(50, 40, 10));
+            list.add(new ClickPoint(50, 60, 20));
+        }
+    }
+
     public static SwipeConfig load(Context ctx) {
         SharedPreferences sp = ctx.getSharedPreferences(PREF, Context.MODE_PRIVATE);
         SwipeConfig c = new SwipeConfig();
@@ -122,8 +130,7 @@ public class SwipeConfig {
             if (parsed != null) c.clickPoints.addAll(parsed);
         }
         if (c.clickPoints.isEmpty()) {
-            c.clickPoints.add(new ClickPoint(50, 40, 10));
-            c.clickPoints.add(new ClickPoint(50, 60, 20));
+            ensureDefaultPoints(c.clickPoints);
         }
         // 最终兜底
         if (c.mode == null) c.mode = Mode.SWIPE;
@@ -201,8 +208,7 @@ public class SwipeConfig {
             if (parsed != null) c.clickPoints.addAll(parsed);
 
             if (c.clickPoints.isEmpty()) {
-                c.clickPoints.add(new ClickPoint(30, 50, 10));
-                c.clickPoints.add(new ClickPoint(70, 50, 10));
+                ensureDefaultPoints(c.clickPoints);
             }
         } catch (Throwable t) {
             android.util.Log.e("SwipeConfig", "fromJson err", t);

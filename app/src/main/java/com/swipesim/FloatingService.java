@@ -140,7 +140,7 @@ public class FloatingService extends Service {
             }
             PendingIntent pi = PendingIntent.getActivity(this, 0, launch, flags);
             Notification n = new NotificationCompat.Builder(this, CHANNEL_ID)
-                    .setContentTitle("滑动模拟器 v1.2.1")
+                    .setContentTitle("滑动模拟器 v" + Util.versionName(this))
                     .setContentText("悬浮控制运行中，点击打开配置")
                     .setSmallIcon(android.R.drawable.ic_menu_view)
                     .setOngoing(true)

@@ -136,16 +136,14 @@ public class SwipeAccessibilityService extends AccessibilityService {
     private void log(String msg) { Log.d(TAG, msg); }
     private void logWarning(String msg) { Log.w(TAG, msg); }
     private void toastShort(final String msg) {
-        try {
-            handler.post(new Runnable() {
-                @Override public void run() {
-                    Toast.makeText(SwipeAccessibilityService.this, msg, Toast.LENGTH_SHORT).show();
-                }
-            });
-        } catch (Throwable ignored) {}
+        Util.toast(this, msg);
     }
 
+    private DisplayMetrics cachedMetrics = null;
+
     private DisplayMetrics getScreenMetrics() {
+        // 缓存：屏幕尺寸在一次手势周期内不变，避免每次 dispatchClick 重复获取
+        if (cachedMetrics != null) return cachedMetrics;
         DisplayMetrics out = new DisplayMetrics();
         try {
             WindowManager wm = (WindowManager) getSystemService(WINDOW_SERVICE);
@@ -158,8 +156,12 @@ public class SwipeAccessibilityService extends AccessibilityService {
         // 保证不崩，最低兜底值 1080x1920
         if (out.widthPixels <= 0)  out.widthPixels = 1080;
         if (out.heightPixels <= 0) out.heightPixels = 1920;
+        cachedMetrics = out;
         return out;
     }
+
+    /** 屏幕可能旋转，由外部在适当时机调用以清除缓存 */
+    private void invalidateScreenMetrics() { cachedMetrics = null; }
 
     private String pointName(int idx) {
         if (idx < 26) return String.valueOf((char) ('A' + idx));
@@ -224,12 +226,7 @@ public class SwipeAccessibilityService extends AccessibilityService {
     }
 
     private static String safeMsg(Throwable t) {
-        try {
-            String msg = t == null ? "未知错误" : t.getMessage();
-            if (msg == null || msg.isEmpty()) msg = t == null ? "未知错误" : t.getClass().getSimpleName();
-            if (msg.length() > 80) msg = msg.substring(0, 80) + "…";
-            return msg;
-        } catch (Throwable ignore) { return "异常"; }
+        return Util.safeMsg(t);
     }
 
     // ---------------- 核心循环 ----------------

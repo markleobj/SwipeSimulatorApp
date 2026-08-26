@@ -72,6 +72,21 @@ public class MainActivity extends AppCompatActivity {
     private static final int REQ_OVERLAY = 1001;
 
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
+    // 命名 Runnable，避免匿名内部类持有 Activity 引用导致内存泄漏
+    private final Runnable refreshAccRunnable = new Runnable() {
+        @Override public void run() {
+            try { updateAccessibilityStatus(); } catch (Throwable ignored) {}
+        }
+    };
+
+    private void scheduleDelayedRefresh(long delayMs) {
+        mainHandler.postDelayed(refreshAccRunnable, delayMs);
+    }
+
+    private void cancelPendingRefresh() {
+        mainHandler.removeCallbacks(refreshAccRunnable);
+    }
+
     private BroadcastReceiver statusReceiver = new BroadcastReceiver() {
         @Override public void onReceive(Context context, Intent intent) {
             try {
@@ -95,14 +110,11 @@ public class MainActivity extends AppCompatActivity {
                     } catch (Throwable ignored) {}
                     updateOverlayStatus();
                 } else if (SwipeAccessibilityService.ACTION_ACC_STATE_CHANGED.equals(a)) {
-                    // 无障碍服务连接变化，延迟 300ms 再刷一次（Settings.Secure 有写入延迟）
+                    // 无障碍服务连接变化，延迟 300ms/1000ms 再刷（Settings.Secure 有写入延迟）
                     updateAccessibilityStatus();
-                    mainHandler.postDelayed(new Runnable() {
-                        @Override public void run() { updateAccessibilityStatus(); }
-                    }, 300);
-                    mainHandler.postDelayed(new Runnable() {
-                        @Override public void run() { updateAccessibilityStatus(); }
-                    }, 1000);
+                    cancelPendingRefresh();
+                    scheduleDelayedRefresh(300);
+                    mainHandler.postDelayed(refreshAccRunnable, 1000);
                 }
             } catch (Throwable t) {
                 toastShort("状态刷新异常：" + safeMsg(t));
@@ -619,20 +631,23 @@ public class MainActivity extends AppCompatActivity {
             refreshProfileNameUI();
             // 从无障碍设置页切回来，Settings.Secure 更新有延迟（MIUI/ColorOS 明显）
             // 300ms、1000ms、2000ms 再刷三次兜底
-            mainHandler.postDelayed(new Runnable() {
-                @Override public void run() { updateAccessibilityStatus(); }
-            }, 300);
-            mainHandler.postDelayed(new Runnable() {
-                @Override public void run() { updateAccessibilityStatus(); }
-            }, 1000);
-            mainHandler.postDelayed(new Runnable() {
-                @Override public void run() { updateAccessibilityStatus(); }
-            }, 2000);
+            cancelPendingRefresh();
+            scheduleDelayedRefresh(300);
+            mainHandler.postDelayed(refreshAccRunnable, 1000);
+            mainHandler.postDelayed(refreshAccRunnable, 2000);
         } catch (Throwable ignored) {}
     }
 
     @Override
+    protected void onPause() {
+        super.onPause();
+        // Activity 退到后台时取消所有待执行的无障碍状态刷新，避免无谓唤醒
+        cancelPendingRefresh();
+    }
+
+    @Override
     protected void onDestroy() {
+        cancelPendingRefresh();
         try { unregisterReceiver(statusReceiver); } catch (Exception ignored) {}
         super.onDestroy();
     }

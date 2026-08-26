@@ -99,13 +99,7 @@ public class CaptureOverlayManager {
     }
 
     private void toastShort(final String msg) {
-        try {
-            new Handler(Looper.getMainLooper()).post(new Runnable() {
-                @Override public void run() {
-                    Toast.makeText(ctx, msg, Toast.LENGTH_SHORT).show();
-                }
-            });
-        } catch (Throwable ignored) {}
+        Util.toast(ctx, msg);
     }
 
     @SuppressLint({"InflateParams", "ClickableViewAccessibility"})
@@ -237,11 +231,6 @@ public class CaptureOverlayManager {
     }
 
     private static String safeMsg(Throwable t) {
-        try {
-            String msg = t == null ? "未知错误" : t.getMessage();
-            if (msg == null || msg.isEmpty()) msg = t == null ? "未知错误" : t.getClass().getSimpleName();
-            if (msg.length() > 100) msg = msg.substring(0, 100) + "…";
-            return msg;
-        } catch (Throwable ignore) { return "异常"; }
+        return Util.safeMsg(t);
     }
 }
