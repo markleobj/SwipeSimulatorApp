@@ -27,7 +27,7 @@ import android.widget.LinearLayout;
 import android.widget.SeekBar;
 import android.widget.TextView;
 
-import android.app.AlertDialog;
+import androidx.appcompat.app.AlertDialog;
 
 import androidx.localbroadcastmanager.content.LocalBroadcastManager;
 
@@ -78,13 +78,6 @@ public class FloatingWindowManager {
     private long downAt;
 
     private boolean tempHidden = false;
-
-    // persistCfg 防抖：避免每次按键都写 SP + 发 2 个广播
-    private final Handler persistHandler = new Handler(Looper.getMainLooper());
-    private final Runnable persistRunnable = new Runnable() {
-        @Override public void run() { doPersistCfg(); }
-    };
-    private static final long PERSIST_DEBOUNCE_MS = 400L;
 
     // 保存展开 panel 前小球的位置，收起时恢复
     private int savedHandleX = -1;
@@ -257,9 +250,6 @@ public class FloatingWindowManager {
     }
 
     public void remove() {
-        persistHandler.removeCallbacks(persistRunnable);
-        longPressHandler.removeCallbacks(longPressRunnable);
-        try { doPersistCfg(); } catch (Throwable ignored) {} // 收起前确保落地
         if (!shown || rootView == null) return;
         try {
             LocalBroadcastManager.getInstance(ctx).unregisterReceiver(receiver);
@@ -287,9 +277,10 @@ public class FloatingWindowManager {
         try {
             cfg = SwipeConfig.load(ctx);
             if (cfg.clickPoints == null) cfg.clickPoints = new ArrayList<>();
-            // 如果用户正在编辑某个 EditText，跳过全量 UI 刷新（避免 renderPointsList 重建
-            // 点位 EditText 导致焦点丢失 + 光标跳到第一位），只更新状态文本和按钮
+            // 关键：任何 EditText 正在获得焦点时，不做全量 UI 刷新
+            // 否则 renderPointsList 会销毁重建所有点位行，导致焦点丢失、光标跳到最前面
             if (anyEditTextFocused()) {
+                // 只刷新状态文案，不动输入框
                 refreshParamsText();
                 updateBtnStart();
             } else {
@@ -300,11 +291,26 @@ public class FloatingWindowManager {
         } catch (Throwable ignored) {}
     }
 
-    /** 检查悬浮窗内是否有 EditText 正获得焦点 */
+    /**
+     * 检查悬浮窗内是否有任何 EditText 正在获得焦点
+     * 包括静态输入框（距离/时长/间隔等）和动态创建的点位延时输入框
+     */
     private boolean anyEditTextFocused() {
-        if (rootView == null) return false;
-        View focused = rootView.findFocus();
-        return focused instanceof EditText;
+        try {
+            if (rootView != null && rootView.hasFocus()) {
+                View focused = rootView.findFocus();
+                if (focused instanceof EditText) return true;
+            }
+            // 兜底：挨个检查已知的静态输入框
+            if (etDistance != null && etDistance.hasFocus()) return true;
+            if (etIntervalSwipe != null && etIntervalSwipe.hasFocus()) return true;
+            if (etDuration != null && etDuration.hasFocus()) return true;
+            if (etMidPause != null && etMidPause.hasFocus()) return true;
+            if (etMidPos != null && etMidPos.hasFocus()) return true;
+            if (etOffset != null && etOffset.hasFocus()) return true;
+            if (etIntervalClick != null && etIntervalClick.hasFocus()) return true;
+        } catch (Throwable ignored) {}
+        return false;
     }
 
     // ============== UI 渲染 ==============
@@ -317,7 +323,7 @@ public class FloatingWindowManager {
             // Direction
             setDirectionUi(cfg.direction);
 
-            // Swipe rows — 对有焦点的 EditText 跳过 setText，避免光标跳到第一位
+            // Swipe rows — 有焦点的输入框跳过 setText，避免光标被重置
             setTextSafe(etDistance, String.valueOf(Math.max(10, Math.min(90, cfg.distancePct))));
             setTextSafe(etIntervalSwipe, String.valueOf(Math.max(1, Math.min(600, cfg.intervalSec))));
             setTextSafe(etDuration, String.valueOf(Math.max(50, cfg.durationMs)));
@@ -327,19 +333,46 @@ public class FloatingWindowManager {
 
             // Click rows
             setTextSafe(etIntervalClick, String.valueOf(Math.max(1, Math.min(600, cfg.intervalSec))));
-            try { sbIntervalClick.setProgress(Math.max(1, Math.min(600, cfg.intervalSec))); } catch (Throwable ignored) {}
-            renderPointsList();
+            try {
+                if (sbIntervalClick != null && !sbIntervalClick.isPressed()) {
+                    sbIntervalClick.setProgress(Math.max(1, Math.min(600, cfg.intervalSec)));
+                }
+            } catch (Throwable ignored) {}
+            // 如果任何点位延时输入框有焦点，跳过重建列表（避免销毁焦点 View）
+            if (!isAnyDelayEtFocused()) {
+                renderPointsList();
+            }
         } finally { settingText = false; }
     }
 
     /**
-     * 安全 setText：如果 EditText 正在获得焦点（用户正在输入），跳过赋值，
-     * 避免广播回环导致 setText → 光标跳到第 0 位 → 用户无法继续编辑。
+     * 安全 setText：如果 EditText 有焦点就跳过，避免光标被重置
      */
     private void setTextSafe(EditText et, String text) {
-        if (et == null || text == null) return;
-        if (et.isFocused()) return; // 用户正在编辑，以用户输入为准
+        if (et == null) return;
+        if (et.hasFocus()) return;
         et.setText(text);
+    }
+
+    /**
+     * 检查点位延时输入框里是否有获得焦点的
+     */
+    private boolean isAnyDelayEtFocused() {
+        try {
+            if (pointsContainer == null) return false;
+            int count = pointsContainer.getChildCount();
+            for (int i = 0; i < count; i++) {
+                View row = pointsContainer.getChildAt(i);
+                if (row instanceof ViewGroup) {
+                    ViewGroup vg = (ViewGroup) row;
+                    for (int j = 0; j < vg.getChildCount(); j++) {
+                        View child = vg.getChildAt(j);
+                        if (child instanceof EditText && child.hasFocus()) return true;
+                    }
+                }
+            }
+        } catch (Throwable ignored) {}
+        return false;
     }
 
     private void setTabUi(Mode m) {
@@ -371,7 +404,9 @@ public class FloatingWindowManager {
     private static final List<String> POINT_LETTERS = Arrays.asList(
             "A","B","C","D","E","F","G","H","I","J","K","L","M","N","O","P","Q","R","S","T","U","V","W","X","Y","Z",
             "A2","B2","C2","D2","E2","F2","G2","H2","I2","J2","K2","L2","M2","N2","O2","P2","Q2","R2","S2","T2","U2","V2","W2","X2","Y2","Z2");
-    private static final int[] POINT_COLORS = Util.POINT_COLORS;
+    private static final int[] POINT_COLORS = {
+            0xFF38BDF8, 0xFF22C55E, 0xFFF59E0B, 0xFFEF4444, 0xFFA855F7, 0xFFEC4899, 0xFF14B8A6, 0xFFFB923C, 0xFF6366F1, 0xFF84CC16
+    };
 
     private void renderPointsList() {
         if (pointsContainer == null) return;
@@ -397,7 +432,7 @@ public class FloatingWindowManager {
             tvLet.setTypeface(null, android.graphics.Typeface.BOLD);
             tvLet.setTextColor(0xFFFFFFFF);
             tvLet.setGravity(android.view.Gravity.CENTER);
-            tvLet.setBackground(makeBg(color));
+            tvLet.setBackgroundDrawable(makeBg(color));
             int sz = dp2(20);
             tvLet.setLayoutParams(new LinearLayout.LayoutParams(sz, sz));
             tvLet.setPadding(0, 0, 0, 0);
@@ -444,8 +479,16 @@ public class FloatingWindowManager {
                 @Override public void onTextChanged(CharSequence s, int start, int before, int count) {}
                 @Override public void afterTextChanged(Editable s) {
                     if (settingText) return;
-                    int v = parseIntSafe(s.toString(), 0);
-                    v = Math.max(0, Math.min(600, v));
+                    String raw = s == null ? "" : s.toString().trim();
+                    // 允许空值：用户删光了就是空的，不要强制填回 "0"
+                    // 但内部 cfg 值用 0 兜底（保证程序逻辑安全）
+                    int v;
+                    if (raw.isEmpty()) {
+                        v = 0;
+                    } else {
+                        v = parseIntSafe(raw, 0);
+                        v = Math.max(0, Math.min(600, v));
+                    }
                     // 同步到 cfg
                     if (fIdx >= 0 && fIdx < cfg.clickPoints.size()) {
                         cfg.clickPoints.get(fIdx).delaySec = v;
@@ -453,12 +496,18 @@ public class FloatingWindowManager {
                     }
                 }
             });
-            // 点位延时 EditText 获取焦点时全选 + 弹软键盘
+            // 点位延时 EditText 获得焦点时：全选文本 + 弹软键盘
+            // 全选后用户直接输入就替换了全部内容，删的时候从末尾一个一个删
             etDelay.setOnFocusChangeListener(new View.OnFocusChangeListener() {
                 @Override public void onFocusChange(View v, boolean hasFocus) {
                     if (hasFocus) {
-                        etDelay.selectAll();
                         showKeyboardFor(etDelay);
+                        // 全选当前内容，新输入直接替换
+                        etDelay.post(new Runnable() {
+                            @Override public void run() {
+                                try { etDelay.selectAll(); } catch (Throwable ignored) {}
+                            }
+                        });
                     }
                 }
             });
@@ -575,7 +624,7 @@ public class FloatingWindowManager {
                 cfg.intervalSec = v;
                 if (!settingText) {
                     settingText = true;
-                    try { setTextSafe(etIntervalClick, String.valueOf(v)); }
+                    try { etIntervalClick.setText(String.valueOf(v)); }
                     finally { settingText = false; }
                 }
                 if (fromUser) { persistCfg(); syncBothInterval(); }
@@ -611,12 +660,16 @@ public class FloatingWindowManager {
                 try { refreshParamsText(); } catch (Throwable ignored) {}
             }
         });
-        // 获取焦点时全选文本 + 弹软键盘（用户需求：输入时先清空，以新输入为准）
+        // 获取焦点时主动弹软键盘 + 全选内容（输入即替换，删除从末尾删）
         et.setOnFocusChangeListener(new View.OnFocusChangeListener() {
             @Override public void onFocusChange(View v, boolean hasFocus) {
                 if (hasFocus) {
-                    et.selectAll();
                     showKeyboardFor(et);
+                    et.post(new Runnable() {
+                        @Override public void run() {
+                            try { et.selectAll(); } catch (Throwable ignored) {}
+                        }
+                    });
                 }
             }
         });
@@ -651,10 +704,11 @@ public class FloatingWindowManager {
         int v = Math.max(1, Math.min(600, cfg.intervalSec));
         settingText = true;
         try {
-            // 跳过有焦点的 EditText，避免光标跳到第一位
             setTextSafe(etIntervalSwipe, String.valueOf(v));
             setTextSafe(etIntervalClick, String.valueOf(v));
-            if (sbIntervalClick != null && !sbIntervalClick.isPressed()) sbIntervalClick.setProgress(v);
+            if (sbIntervalClick != null && !sbIntervalClick.isPressed()) {
+                sbIntervalClick.setProgress(v);
+            }
         } finally { settingText = false; }
         try { refreshParamsText(); } catch (Throwable ignored) {}
     }
@@ -695,20 +749,8 @@ public class FloatingWindowManager {
         });
     }
 
-    // ============== 持久化 + 通知（带防抖） ==============
+    // ============== 持久化 + 通知 ==============
     private void persistCfg() {
-        // 防抖：取消上次未执行的，重新排期，400ms 内无新改动才真正写入
-        persistHandler.removeCallbacks(persistRunnable);
-        persistHandler.postDelayed(persistRunnable, PERSIST_DEBOUNCE_MS);
-    }
-
-    /** 立即强制持久化（跳过防抖），用于关键操作前确保落地 */
-    private void persistCfgImmediate() {
-        persistHandler.removeCallbacks(persistRunnable);
-        doPersistCfg();
-    }
-
-    private void doPersistCfg() {
         try {
             if (cfg == null) return;
             cfg.save(ctx);
@@ -773,7 +815,15 @@ public class FloatingWindowManager {
                 }
             });
             AlertDialog d = ab.create();
-            OverlayHelper.applyOverlayType(d);
+            // 对话框也需要 TYPE_SYSTEM_ALERT / TYPE_APPLICATION_OVERLAY 才能从悬浮窗弹
+            try {
+                WindowManager.LayoutParams lp = d.getWindow() == null ? null : d.getWindow().getAttributes();
+                if (lp != null) {
+                    lp.type = (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O)
+                            ? WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
+                            : WindowManager.LayoutParams.TYPE_PHONE;
+                }
+            } catch (Throwable ignored) {}
             try { d.show(); } catch (Throwable t) { toastShort("弹保存窗失败: " + safeMsg(t)); }
         } catch (Throwable t) { toastShort("保存对话框异常: " + safeMsg(t)); }
     }
@@ -815,7 +865,14 @@ public class FloatingWindowManager {
             });
             ab.setPositiveButton("关闭", null);
             AlertDialog d = ab.create();
-            OverlayHelper.applyOverlayType(d);
+            try {
+                WindowManager.LayoutParams lp = d.getWindow() == null ? null : d.getWindow().getAttributes();
+                if (lp != null) {
+                    lp.type = (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O)
+                            ? WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
+                            : WindowManager.LayoutParams.TYPE_PHONE;
+                }
+            } catch (Throwable ignored) {}
             try { d.show(); } catch (Throwable t) { toastShort("弹方案列表失败: " + safeMsg(t)); }
         } catch (Throwable t) { toastShort("方案列表异常: " + safeMsg(t)); }
     }
@@ -842,12 +899,26 @@ public class FloatingWindowManager {
                         }
                     });
                     AlertDialog d2 = confirm.create();
-                    OverlayHelper.applyOverlayType(d2);
+                    try {
+                        WindowManager.LayoutParams lp = d2.getWindow() == null ? null : d2.getWindow().getAttributes();
+                        if (lp != null) {
+                            lp.type = (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O)
+                                    ? WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
+                                    : WindowManager.LayoutParams.TYPE_PHONE;
+                        }
+                    } catch (Throwable ignored) {}
                     try { d2.show(); } catch (Throwable ignored) {}
                 }
             });
             AlertDialog d = ab.create();
-            OverlayHelper.applyOverlayType(d);
+            try {
+                WindowManager.LayoutParams lp = d.getWindow() == null ? null : d.getWindow().getAttributes();
+                if (lp != null) {
+                    lp.type = (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O)
+                            ? WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
+                            : WindowManager.LayoutParams.TYPE_PHONE;
+                }
+            } catch (Throwable ignored) {}
             try { d.show(); } catch (Throwable ignored) {}
         } catch (Throwable ignored) {}
     }
@@ -873,8 +944,8 @@ public class FloatingWindowManager {
                     toastShort("请先至少添加一个点击点");
                     return;
                 }
-                // 触发前先确保一次持久化+同步（关键操作，跳过防抖）
-                persistCfgImmediate();
+                // 触发前先确保一次持久化+同步
+                persistCfg();
                 String act = btnStart.isSelected()
                         ? SwipeAccessibilityService.ACTION_STOP
                         : SwipeAccessibilityService.ACTION_START;
