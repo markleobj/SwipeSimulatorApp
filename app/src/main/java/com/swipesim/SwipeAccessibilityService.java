@@ -37,6 +37,11 @@ public class SwipeAccessibilityService extends AccessibilityService {
 
     private static final String TAG = "SwipeAcc";
 
+    // 手势超时：手势时长 + 额外缓冲。超时后强制继续，防止回调丢失导致循环卡死
+    private static final int GESTURE_TIMEOUT_EXTRA_MS = 1000;
+    // 连续失败阈值：超过此数自动停止
+    private static final int MAX_CONSECUTIVE_FAILS = 10;
+
     private static volatile SwipeAccessibilityService sInstance;
     public static SwipeAccessibilityService get() { return sInstance; }
 
@@ -47,7 +52,27 @@ public class SwipeAccessibilityService extends AccessibilityService {
     private String state = "idle";
     private String subInfo = "";
 
+    // 连续失败计数（手势超时或 dispatch 失败）
+    private int consecutiveFails = 0;
+
     private final Handler handler = new Handler(Looper.getMainLooper());
+
+    // 缓存 DisplayMetrics，避免每次手势都做 Binder 调用
+    private DisplayMetrics cachedMetrics;
+    private long lastMetricsRefreshMs;
+    private static final long METRICS_CACHE_MS = 30000; // 30秒缓存
+
+    // 状态广播节流：合并同一帧内的多次 broadcastStatus
+    private boolean statusBroadcastPending = false;
+    private final Runnable statusBroadcastRunnable = new Runnable() {
+        @Override public void run() {
+            statusBroadcastPending = false;
+            doBroadcastStatus();
+        }
+    };
+
+    // 复用 Path 对象，减少 GC 压力
+    private final Path reusePath = new Path();
 
     private final BroadcastReceiver receiver = new BroadcastReceiver() {
         @Override public void onReceive(Context context, Intent intent) {
@@ -57,6 +82,8 @@ public class SwipeAccessibilityService extends AccessibilityService {
                 else if (ACTION_STOP.equals(a)) stopLoop();
                 else if (ACTION_SYNC.equals(a)) {
                     cfg = SwipeConfig.load(SwipeAccessibilityService.this);
+                    // 同步配置后重置失败计数
+                    consecutiveFails = 0;
                     toastShort("已同步最新配置");
                 } else if (ACTION_STATUS_REQ.equals(a)) {
                     broadcastStatus();
@@ -89,6 +116,7 @@ public class SwipeAccessibilityService extends AccessibilityService {
         try { LocalBroadcastManager.getInstance(this).unregisterReceiver(receiver); } catch (Throwable ignored) {}
         cancelled = true;
         running = false;
+        try { handler.removeCallbacksAndMessages(null); } catch (Throwable ignored) {}
         try { sendAccStateChanged(); } catch (Throwable ignored) {}
         super.onDestroy();
     }
@@ -97,12 +125,17 @@ public class SwipeAccessibilityService extends AccessibilityService {
     @Override public void onInterrupt() {
         // 部分 ROM（尤其 MIUI/ColorOS）停止服务时只走 onInterrupt，不走 onDestroy
         sInstance = null;
+        cancelled = true;
+        running = false;
+        try { handler.removeCallbacksAndMessages(null); } catch (Throwable ignored) {}
         try { sendAccStateChanged(); } catch (Throwable ignored) {}
     }
 
     @Override protected void onServiceConnected() {
         super.onServiceConnected();
         sInstance = this;
+        // 连接成功后清空失败计数
+        consecutiveFails = 0;
         try { sendAccStateChanged(); } catch (Throwable ignored) {}
         try { broadcastStatus(); } catch (Throwable ignored) {}
     }
@@ -118,10 +151,20 @@ public class SwipeAccessibilityService extends AccessibilityService {
     private void setState(String s, String sub) {
         state = s == null ? "" : s;
         subInfo = sub == null ? "" : sub;
-        try { broadcastStatus(); } catch (Throwable ignored) {}
+        broadcastStatus();
     }
 
+    /**
+     * 节流版状态广播：同一帧内多次调用只发一次广播
+     * 减少主线程压力（每轮滑动 3-5 次 setState → 合并为 1 次广播）
+     */
     private void broadcastStatus() {
+        if (statusBroadcastPending) return;
+        statusBroadcastPending = true;
+        handler.post(statusBroadcastRunnable);
+    }
+
+    private void doBroadcastStatus() {
         Intent i = new Intent(ACTION_STATUS_ANS);
         i.putExtra(EXTRA_RUNNING, running);
         i.putExtra(EXTRA_COUNT, cycleCount);
@@ -135,15 +178,35 @@ public class SwipeAccessibilityService extends AccessibilityService {
 
     private void log(String msg) { Log.d(TAG, msg); }
     private void logWarning(String msg) { Log.w(TAG, msg); }
+
+    // Toast 防抖动：同一消息 2 秒内只弹一次
+    private String lastToastMsg = "";
+    private long lastToastMs = 0;
     private void toastShort(final String msg) {
-        Util.toast(this, msg);
+        if (msg == null) return;
+        long now = System.currentTimeMillis();
+        if (msg.equals(lastToastMsg) && now - lastToastMs < 2000) return;
+        lastToastMsg = msg;
+        lastToastMs = now;
+        try {
+            handler.post(new Runnable() {
+                @Override public void run() {
+                    try { Toast.makeText(SwipeAccessibilityService.this, msg, Toast.LENGTH_SHORT).show(); }
+                    catch (Throwable ignored) {}
+                }
+            });
+        } catch (Throwable ignored) {}
     }
 
-    private DisplayMetrics cachedMetrics = null;
-
+    /**
+     * 获取屏幕尺寸，带 30 秒缓存
+     * 避免每轮多次 Binder 调用（原 performOneSwipe + dispatchClick 每轮多次调用）
+     */
     private DisplayMetrics getScreenMetrics() {
-        // 缓存：屏幕尺寸在一次手势周期内不变，避免每次 dispatchClick 重复获取
-        if (cachedMetrics != null) return cachedMetrics;
+        long now = System.currentTimeMillis();
+        if (cachedMetrics != null && now - lastMetricsRefreshMs < METRICS_CACHE_MS) {
+            return cachedMetrics;
+        }
         DisplayMetrics out = new DisplayMetrics();
         try {
             WindowManager wm = (WindowManager) getSystemService(WINDOW_SERVICE);
@@ -157,11 +220,9 @@ public class SwipeAccessibilityService extends AccessibilityService {
         if (out.widthPixels <= 0)  out.widthPixels = 1080;
         if (out.heightPixels <= 0) out.heightPixels = 1920;
         cachedMetrics = out;
+        lastMetricsRefreshMs = now;
         return out;
     }
-
-    /** 屏幕可能旋转，由外部在适当时机调用以清除缓存 */
-    private void invalidateScreenMetrics() { cachedMetrics = null; }
 
     private String pointName(int idx) {
         if (idx < 26) return String.valueOf((char) ('A' + idx));
@@ -186,6 +247,7 @@ public class SwipeAccessibilityService extends AccessibilityService {
             running = true;
             cancelled = false;
             cycleCount = 0;
+            consecutiveFails = 0;
             log("开始循环。模式=" + cfg.mode + "，周期间隔=" + cfg.getIntervalMs() + "ms");
             setState(cfg.mode == SwipeConfig.Mode.SWIPE ? "swiping" : "clicking", "");
             handler.post(new Runnable() {
@@ -225,8 +287,26 @@ public class SwipeAccessibilityService extends AccessibilityService {
         toastShort(label + "：" + safeMsg(t));
     }
 
+    /**
+     * 记录一次失败。连续失败超过阈值则自动停止。
+     */
+    private void onGestureFail(String reason) {
+        consecutiveFails++;
+        logWarning("手势失败(" + consecutiveFails + "/" + MAX_CONSECUTIVE_FAILS + "): " + reason);
+        if (consecutiveFails >= MAX_CONSECUTIVE_FAILS) {
+            logWarning("连续失败达到阈值，自动停止");
+            toastShort("连续 " + MAX_CONSECUTIVE_FAILS + " 次失败，已自动停止（请检查无障碍服务是否正常）");
+            stopLoop();
+        }
+    }
+
     private static String safeMsg(Throwable t) {
-        return Util.safeMsg(t);
+        try {
+            String msg = t == null ? "未知错误" : t.getMessage();
+            if (msg == null || msg.isEmpty()) msg = t == null ? "未知错误" : t.getClass().getSimpleName();
+            if (msg.length() > 80) msg = msg.substring(0, 80) + "…";
+            return msg;
+        } catch (Throwable ignore) { return "异常"; }
     }
 
     // ---------------- 核心循环 ----------------
@@ -239,6 +319,8 @@ public class SwipeAccessibilityService extends AccessibilityService {
                     try {
                         if (cancelled) return;
                         cycleCount++;
+                        // 完成一轮后清空失败计数（恢复正常了）
+                        consecutiveFails = 0;
                         setState("waiting_next", "");
                         log("完成第 " + cycleCount + " 轮，等待 " + cfg.getIntervalMs() + "ms 后下一轮");
                         handler.postDelayed(new Runnable() {
@@ -342,37 +424,76 @@ public class SwipeAccessibilityService extends AccessibilityService {
         });
     }
 
+    /**
+     * 分发滑动手势，带超时保护。
+     * 如果 GestureResultCallback 在（时长 + 1s）内未回调，强制继续，防止循环卡死。
+     */
     private void dispatchSwipe(float x1, float y1, float x2, float y2, int dur, final Runnable onDone) {
         try {
-            Path p = new Path();
-            p.moveTo(x1, y1);
-            p.lineTo(x2, y2);
+            // 复用 Path 对象
+            reusePath.reset();
+            reusePath.moveTo(x1, y1);
+            reusePath.lineTo(x2, y2);
+            final int safeDur = Math.max(10, dur);
             GestureDescription.Builder b = new GestureDescription.Builder();
-            b.addStroke(new GestureDescription.StrokeDescription(p, 0, Math.max(10, dur)));
+            b.addStroke(new GestureDescription.StrokeDescription(reusePath, 0, safeDur));
+
+            // 超时保护：用 boolean 标记确保回调只执行一次
+            // 注意顺序：timeoutRunnable 先声明（不依赖 fireOnce），fireOnce 后声明（依赖 timeoutRunnable）
+            final boolean[] fired = {false};
+            // 超时 Runnable：超时后直接执行完成逻辑
+            final Runnable swipeTimeoutRunnable = new Runnable() {
+                @Override public void run() {
+                    if (fired[0]) return;
+                    fired[0] = true;
+                    logWarning("swipe 超时（" + safeDur + "ms + " + GESTURE_TIMEOUT_EXTRA_MS + "ms 缓冲），强制继续");
+                    onGestureFail("swipe 超时");
+                    if (onDone != null) {
+                        try { onDone.run(); } catch (Throwable t) { failSafe(t, "swipe timeout done 异常"); }
+                    }
+                }
+            };
+            // 正常完成回调：执行完成并取消超时
+            final Runnable swipeFireOnce = new Runnable() {
+                @Override public void run() {
+                    if (fired[0]) return;
+                    fired[0] = true;
+                    handler.removeCallbacks(swipeTimeoutRunnable);
+                    if (onDone != null) {
+                        try { onDone.run(); } catch (Throwable t) { failSafe(t, "swipe done 异常"); }
+                    }
+                }
+            };
+
             boolean ok = dispatchGesture(b.build(), new GestureResultCallback() {
                 @Override public void onCompleted(GestureDescription g) {
-                    if (onDone != null) handler.post(new Runnable() {
-                        @Override public void run() {
-                            try { onDone.run(); } catch (Throwable t) { failSafe(t, "swipe done 异常"); }
-                        }
+                    if (!fired[0]) handler.post(new Runnable() {
+                        @Override public void run() { swipeFireOnce.run(); }
                     });
                 }
                 @Override public void onCancelled(GestureDescription g) {
                     logWarning("swipe 被取消");
-                    if (onDone != null) handler.post(new Runnable() {
-                        @Override public void run() {
-                            try { onDone.run(); } catch (Throwable t) { failSafe(t, "swipe cancel 异常"); }
-                        }
+                    onGestureFail("swipe 被取消");
+                    if (!fired[0]) handler.post(new Runnable() {
+                        @Override public void run() { swipeFireOnce.run(); }
                     });
                 }
             }, null);
+
             if (!ok) {
                 logWarning("dispatchSwipe 返回 false  （需 Android 7.0+）");
+                onGestureFail("dispatchSwipe 返回 false");
                 toastShort("手势下发失败（需 Android 7.0+）");
+                // 返回 false 时直接执行回调，不走超时
+                fired[0] = true;
                 if (onDone != null) handler.post(onDone);
+                return;
             }
+            // 启动超时计时器
+            handler.postDelayed(swipeTimeoutRunnable, safeDur + GESTURE_TIMEOUT_EXTRA_MS);
         } catch (Throwable t) {
             Log.e(TAG, "dispatchSwipe", t);
+            onGestureFail("dispatchSwipe 异常: " + safeMsg(t));
             toastShort("滑动下发失败：" + safeMsg(t));
             if (onDone != null) handler.post(onDone);
         }
@@ -434,6 +555,9 @@ public class SwipeAccessibilityService extends AccessibilityService {
         });
     }
 
+    /**
+     * 分发点击手势，带超时保护。
+     */
     private void dispatchClick(float x, float y, final Runnable onDone) {
         try {
             // 边界兜底：不能太靠边（0 或等于宽/高会失败）
@@ -442,35 +566,65 @@ public class SwipeAccessibilityService extends AccessibilityService {
             float cx = Math.max(pad, Math.min(dm.widthPixels - pad, x));
             float cy = Math.max(pad, Math.min(dm.heightPixels - pad, y));
 
-            Path p = new Path();
-            p.moveTo(cx, cy);
+            // 复用 Path 对象
+            reusePath.reset();
+            reusePath.moveTo(cx, cy);
+            final int clickDur = 30;
             GestureDescription.Builder b = new GestureDescription.Builder();
-            // 典型点击：按住 8ms，然后抬起，总体长 20ms 模拟真实
-            b.addStroke(new GestureDescription.StrokeDescription(p, 0, 30));
+            // 典型点击：按住 8ms，然后抬起，总体长 30ms 模拟真实
+            b.addStroke(new GestureDescription.StrokeDescription(reusePath, 0, clickDur));
+
+            // 超时保护（顺序：timeout 先声明，fireOnce 后声明避免前向引用）
+            final boolean[] fired = {false};
+            final Runnable clickTimeoutRunnable = new Runnable() {
+                @Override public void run() {
+                    if (fired[0]) return;
+                    fired[0] = true;
+                    logWarning("click 超时（" + clickDur + "ms + " + GESTURE_TIMEOUT_EXTRA_MS + "ms 缓冲），强制继续");
+                    onGestureFail("click 超时");
+                    if (onDone != null) {
+                        try { onDone.run(); } catch (Throwable t) { failSafe(t, "click timeout done 异常"); }
+                    }
+                }
+            };
+            final Runnable clickFireOnce = new Runnable() {
+                @Override public void run() {
+                    if (fired[0]) return;
+                    fired[0] = true;
+                    handler.removeCallbacks(clickTimeoutRunnable);
+                    if (onDone != null) {
+                        try { onDone.run(); } catch (Throwable t) { failSafe(t, "click done 异常"); }
+                    }
+                }
+            };
+
             boolean ok = dispatchGesture(b.build(), new GestureResultCallback() {
                 @Override public void onCompleted(GestureDescription g) {
-                    if (onDone != null) handler.post(new Runnable() {
-                        @Override public void run() {
-                            try { onDone.run(); } catch (Throwable t) { failSafe(t, "click done 异常"); }
-                        }
+                    if (!fired[0]) handler.post(new Runnable() {
+                        @Override public void run() { clickFireOnce.run(); }
                     });
                 }
                 @Override public void onCancelled(GestureDescription g) {
                     logWarning("click 被取消");
-                    if (onDone != null) handler.post(new Runnable() {
-                        @Override public void run() {
-                            try { onDone.run(); } catch (Throwable t) { failSafe(t, "click cancel 异常"); }
-                        }
+                    onGestureFail("click 被取消");
+                    if (!fired[0]) handler.post(new Runnable() {
+                        @Override public void run() { clickFireOnce.run(); }
                     });
                 }
             }, null);
+
             if (!ok) {
                 logWarning("dispatchClick 返回 false  （需 Android 7.0+）");
+                onGestureFail("dispatchClick 返回 false");
                 toastShort("点击下发失败（需 Android 7.0+）");
+                fired[0] = true;
                 if (onDone != null) handler.post(onDone);
+                return;
             }
+            handler.postDelayed(clickTimeoutRunnable, clickDur + GESTURE_TIMEOUT_EXTRA_MS);
         } catch (Throwable t) {
             Log.e(TAG, "dispatchClick", t);
+            onGestureFail("dispatchClick 异常: " + safeMsg(t));
             toastShort("点击下发失败：" + safeMsg(t));
             if (onDone != null) handler.post(onDone);
         }
